@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acima da Névoa</title>
+<style>
+  :root { --ink: #f7f2e8; --gold: #ffe2a0; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #b8c4c6; user-select: none; }
+  canvas { display: block; }
+  .hud { position: fixed; pointer-events: none; color: var(--ink); font-family: Poppins, sans-serif; font-weight: 300;
+         text-shadow: 0 1px 2px rgba(18, 26, 34, .55), 0 0 22px rgba(18, 26, 34, .28); transition: opacity 1s; }
+
+  /* ---- in-game HUD: only exists while playing; a counter, the current checkpoint and a height gauge, no boxes */
+  #count, #alt { opacity: 0; }
+  .nohud #count, .nohud #alt { display: none; }
+  .playing #count { opacity: .8; }
+  .playing #count.show { opacity: 1; }
+  .playing #alt { opacity: .75; }
+
+  #count { left: 36px; bottom: 30px; font-size: 16px; font-weight: 500; letter-spacing: .03em; }
+  #count .gem { color: var(--gold); margin-right: .6em; text-shadow: 0 0 12px rgba(255, 214, 140, .95); }
+  #count .tot { opacity: .5; font-weight: 300; }
+  #count .cpl { margin-top: 6px; font-size: 12px; font-weight: 400; letter-spacing: .02em; opacity: .65; }
+  #fps { left: 36px; top: 26px; font-size: 12px; font-weight: 500; letter-spacing: .04em; opacity: .7; }
+  #count.pulse .n { animation: pulse .5s ease-out; display: inline-block; }
+  @keyframes pulse { 0% { transform: scale(1.45); } 100% { transform: scale(1); } }
+
+  #alt { right: 34px; top: 50%; height: 36vh; width: 70px; transform: translateY(-50%); }
+  #alt .line { position: absolute; right: 9px; top: 0; bottom: 0; width: 1px; background: linear-gradient(to top, rgba(255, 248, 235, .6), rgba(255, 248, 235, .12)); }
+  #alt .line i { position: absolute; right: -2px; width: 5px; height: 5px; transform: translateY(50%) rotate(45deg); background: rgba(255, 248, 235, .35); transition: background .6s, box-shadow .6s; }
+  #alt .line i.on { background: var(--gold); box-shadow: 0 0 8px rgba(255, 214, 140, .85); }
+  #alt .me { position: absolute; right: 5px; display: flex; align-items: center; gap: 12px; transform: translateY(50%); transition: bottom .25s linear; }
+  #alt .me b { width: 9px; height: 9px; transform: rotate(45deg); background: var(--gold); box-shadow: 0 0 12px rgba(255, 214, 140, .95); }
+  #alt .me .m { font-size: 12px; font-weight: 500; letter-spacing: .03em; }
+
+  /* ---- area title, messages */
+  #area { left: 0; right: 0; top: 19%; text-align: center; opacity: 0; transition: opacity 1.6s; }
+  #area.show { opacity: 1; }
+  #area .num { font-size: 13px; font-weight: 400; letter-spacing: .2em; opacity: .75; padding-left: .2em; }
+  #area .name { font-size: clamp(26px, 3.4vw, 38px); font-weight: 300; letter-spacing: .03em; margin: .3em 0 0; }
+  #area .line { width: 140px; height: 1px; margin: 14px auto; background: linear-gradient(90deg, transparent, rgba(255, 248, 235, .85), transparent); }
+  #area .sub { font-size: 13px; font-weight: 400; letter-spacing: .05em; opacity: .8; }
+
+  #msg { left: 0; right: 0; bottom: 11%; text-align: center; font-size: 14px; letter-spacing: .03em; opacity: 0; line-height: 2.2; }
+  #msg.show { opacity: .9; }
+  #msg b { font-weight: 300; font-size: 24px; letter-spacing: .04em; }
+
+  #loading { left: 0; right: 0; bottom: 8%; text-align: center; font-size: 14px; letter-spacing: .04em; opacity: .8; }
+
+  /* ---- title screen */
+  #title { inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; }
+  #title.show { opacity: 1; }
+  #title .t-main { font-size: clamp(36px, 6vw, 72px); font-weight: 300; letter-spacing: .04em; margin-top: -18vh; }
+  #title .t-sub { font-size: 15px; font-weight: 300; letter-spacing: .06em; opacity: .85; margin-top: 16px; }
+  #title .t-start { position: absolute; bottom: 14%; font-size: 15px; font-weight: 400; letter-spacing: .05em; animation: blink 2.4s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  /* ---- pause / settings menu */
+  #pause { inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0;
+           background: radial-gradient(ellipse at center, rgba(14, 20, 28, .15) 0%, rgba(10, 14, 20, .6) 100%);
+           /* hidden = really hidden, so the blur isn't recomputed over the live canvas while playing */
+           backdrop-filter: blur(3px); visibility: hidden; transition: opacity .35s, visibility 0s .35s; }
+  #pause.show { opacity: 1; pointer-events: auto; visibility: visible; transition: opacity .35s; }
+  #pause .p-title { font-size: 22px; font-weight: 300; letter-spacing: .04em; opacity: .9; margin-bottom: 26px; }
+  #menu { list-style: none; margin: 0; padding: 0; text-align: center; }
+  #menu li { font-size: 18px; font-weight: 300; letter-spacing: .02em; padding: 6px 0; opacity: .42; cursor: pointer; transition: opacity .2s; position: relative; }
+  #menu li.sel { opacity: 1; font-weight: 400; }
+  #menu li.sel::before { content: '◆'; font-size: 9px; position: absolute; margin-left: -28px; top: 50%; transform: translateY(-50%); color: var(--gold); text-shadow: 0 0 10px rgba(255, 214, 140, .9); }
+  #menu .val { font-size: 16px; font-weight: 400; letter-spacing: .02em; margin-left: 22px; opacity: .9; }
+  #menu.cols li { display: flex; justify-content: space-between; align-items: baseline; width: min(460px, 80vw); margin: 0 auto; padding: 6px 12px; text-align: left; }
+  #menu.cols li::before { margin-left: 0 !important; left: -14px; }
+  #menu.cols .val { min-width: 130px; text-align: right; margin-left: 12px; }
+  #menu .val i { font-style: normal; padding: 0 8px; opacity: .6; }
+  #pause .p-foot { position: absolute; bottom: 8%; font-size: 14px; letter-spacing: .03em; opacity: .65; text-align: center; max-width: 70vw; }
+</style>
+</head>
+<body>
+<div id="count" class="hud"><span class="gem">◆</span><span class="n">0</span><span class="tot"> / 0</span><div class="cpl">Checkpoint · I</div></div>
+<div id="fps" class="hud"></div>
+<div id="alt" class="hud"><div class="line"></div><div class="me"><span class="m">0 m</span><b></b></div></div>
+<div id="area" class="hud"><div class="num"></div><div class="name"></div><div class="line"></div><div class="sub"></div></div>
+<div id="msg" class="hud"></div>
+<div id="loading" class="hud">carregando</div>
+<div id="title" class="hud">
+  <div class="t-main">Acima da Névoa</div>
+  <div class="t-sub">um pequeno salto de cada vez</div>
+  <div class="t-start">clique para começar</div>
+</div>
+<div id="pause" class="hud"><div class="p-title"></div><ul id="menu"></ul><div class="p-foot"></div></div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
