@@ -1,20 +1,27 @@
 // The hopping head: movement, collisions, animation, checkpoints, collectibles, respawn.
 import * as THREE from 'three';
 import { scene, U, keys, game } from '../core.js';
-import { S_CHAR, PR, PH, MAX_SPEED, JUMP_V, GRAV, dev } from '../config.js';
+import { PR, PH, MAX_SPEED, JUMP_V, GRAV, WIND, dev } from '../config.js';
+import { swordGroups } from './characterAsset.js';
+import { combat, beginAttack, advanceAttack, ATTACK_RATE, DRAW_RATE, IMPACTS } from './combatRules.js';
 import { V3, clamp, damp, angDiff } from '../utils.js';
-import { colliders, islands, pickups, summit, updrafts, ponds, colR, groundUnder } from '../procedural/world.js';
-import { lightShrine } from '../procedural/objects/index.js';
-import { puff, burst, SPARK_W } from '../fx/particles.js';
+import { islands, secrets, counts, pickups, summit, updrafts, ponds, colR, groundUnder, near, inside, inHollow, toLocal, waterAt, waterFloor, streamAt } from '../procedural/world.js';
+import { lightShrine, waterWake } from '../procedural/objects/index.js';
+import { puff, burst, sparks, SPARK_W } from '../fx/particles.js';
 import { grade } from '../render/post.js';
-import { tone, playSample, stepSound } from './audio.js';
-import { setCount, flashCount, areaTitle, message } from './ui.js';
-import { cam } from './camera.js';
+import { tone, playSample, stepSound, glideSound, swordWhoosh } from './audio.js';
+import { setCount, flashCount, areaTitle, toast } from './ui.js';
+import { canCollect, MEMORIES } from './journeyRules.js';
+import { held, move } from './input.js';
+import { save, persist, mark, unlock } from './progress.js';
+import { cam, resetCameraMotion } from './camera.js';
 
 export const player = {
   pos: new V3(), vel: new V3(), grounded: false, ground: null, lastGroundY: 0, coyote: 0, jumpBuf: 0,
   jumping: false, jumpAnim: false, yaw: 0, sq: 0, sqV: 0, tilt: 0, cp: 0, idleT: 0, collected: 0,
+  climbing: null, gliding: false, glideFrom: new V3(),
 };
+export const hooks = { finale: null, strike: null, aim: null, respawn: null };
 
 // rig: position -> facing -> lean -> squash & stretch -> model
 const root = new THREE.Group(), yawG = new THREE.Group(), tiltG = new THREE.Group(), sqG = new THREE.Group();
@@ -27,8 +34,57 @@ scene.add(blob);
 // ------------------------------------------------------------ character & animation
 let mixer = null, curAnim = null, oneShot = null, lastWalkT = 0;
 const actions = {};
+let weapons = [];
+
+function startWeaponTransition(toArmed, attackAfter = false) {
+  const name = toArmed ? 'Draw' : 'Sheathe', action = actions[name];
+  if (!action) return false;
+  combat.weaponTransition = { name, toArmed, time: 0, duration: action.getClip().duration / DRAW_RATE };
+  combat.pendingAttack = attackAfter;
+  oneShot = null; player.idleT = 0;
+  play(name, 0.06, DRAW_RATE, 0, true);
+  return true;
+}
+
+function attackDirection() {
+  const { x, z } = move();
+  return Math.hypot(x, z) > 0.15
+    ? Math.atan2(-Math.sin(cam.yaw) * z + Math.cos(cam.yaw) * x, -Math.cos(cam.yaw) * z - Math.sin(cam.yaw) * x)
+    : player.yaw;
+}
+
+export function requestAttack() {
+  if (!actions.Attack || game.state !== 'play' || fade.phase !== 'none'
+    || player.climbing || player.gliding || player.ground?.water || combat.hurt > 0 || dev.fly) return false;
+  if (combat.weaponTransition) { combat.pendingAttack = true; return true; }
+  if (!combat.armed) return startWeaponTransition(true, true);
+  if (combat.attack) {
+    if (combat.attack.duration - combat.attack.time < 0.3) combat.queued = true;
+    return false;
+  }
+  oneShot = null; player.idleT = 0;
+  const direction = attackDirection();
+  beginAttack(combat, actions.Attack.getClip().duration / ATTACK_RATE);
+  combat.attack.aimYaw = hooks.aim?.(player, direction) ?? direction;
+  play('Attack', 0.08, ATTACK_RATE, 0, true);
+  return true;
+}
+
+export function toggleWeapons() {
+  if (game.state !== 'play' || fade.phase !== 'none' || player.climbing || dev.fly
+    || combat.attack || combat.weaponTransition || combat.hurt > 0) return false;
+  return startWeaponTransition(!combat.armed);
+}
+
+export function receiveHit() {
+  combat.attack = null; combat.queued = false; combat.hurt = 0.35;
+  combat.weaponTransition = null; combat.pendingAttack = false;
+  oneShot = 'HitRecieve';
+  play('HitRecieve', 0.05, 1, 0, true);
+}
 
 function play(name, fade = 0.15, ts = 1, t0 = 0, force = false) {
+  if (combat.armed && actions[name + '_Armed']) name += '_Armed';
   const a = actions[name]; if (!a) return;
   a.timeScale = ts;
   if (curAnim === name && !force) return;
@@ -58,8 +114,7 @@ function rimify(mat) {
   return mat;
 }
 export function attachCharacter(fbx) {
-  fbx.scale.setScalar(S_CHAR);
-  fbx.position.y = 20 * S_CHAR;
+  weapons = swordGroups(fbx);
   fbx.traverse(o => {
     if (!o.isMesh) return;
     o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
@@ -69,49 +124,93 @@ export function attachCharacter(fbx) {
   sqG.add(fbx);
   mixer = new THREE.AnimationMixer(fbx);
   for (const clip of fbx.animations) actions[clip.name.split('|').pop()] = mixer.clipAction(clip);
-  for (const n of ['Jump', 'Yes', 'No', 'HitRecieve', 'Death']) if (actions[n]) { actions[n].setLoop(THREE.LoopOnce); actions[n].clampWhenFinished = true; }
-  mixer.addEventListener('finished', e => { if (oneShot && e.action === actions[oneShot]) oneShot = null; });
-  play('Idle');
+  for (const n of ['Attack', 'Draw', 'Sheathe', 'Jump', 'Yes', 'No', 'HitRecieve', 'Death']) {
+    for (const key of [n, n + '_Armed']) if (actions[key]) { actions[key].setLoop(THREE.LoopOnce); actions[key].clampWhenFinished = true; }
+  }
+  mixer.addEventListener('finished', e => { if (oneShot && (e.action === actions[oneShot] || e.action === actions[oneShot + '_Armed'])) oneShot = null; });
+  play(combat.armed ? 'Idle_Attack' : 'Idle');
+  for (const w of weapons) w.visible = true;
 }
 
 export function updateAnim(dt) {
   if (!mixer) return;
+  let advanced = false;
+  if (combat.weaponTransition) {
+    if (fade.phase === 'out' || dev.fly) {
+      combat.weaponTransition = null; combat.pendingAttack = false;
+    } else {
+      const transition = combat.weaponTransition;
+      transition.time += dt; mixer.update(dt); advanced = true;
+      if (transition.time < transition.duration) return;
+      combat.armed = transition.toArmed; combat.weaponTransition = null;
+      const attackAfter = combat.pendingAttack; combat.pendingAttack = false;
+      if (attackAfter && requestAttack()) return;
+    }
+  }
+  if (combat.attack && (fade.phase === 'out' || dev.fly)) { combat.attack = null; combat.queued = false; }
+  const attacking = !!combat.attack;
+  if (combat.attack) {
+    const a = combat.attack;
+    if (a.time < a.duration * 0.24) {
+      player.yaw += clamp(angDiff(player.yaw, a.aimYaw ?? player.yaw), -20 * dt, 20 * dt);
+      syncRig();
+    }
+    a.swish ??= 0;
+    while (a.swish < IMPACTS.length && a.time + dt >= a.duration * IMPACTS[a.swish] - 0.065)
+      swordWhoosh(a.swish++);
+  }
+  const result = advanceAttack(combat, dt);
+  if (attacking) {
+    if (!advanced) mixer.update(dt);
+    advanced = true;
+    for (const swing of result.strikes) hooks.strike?.(player, swing);
+    for (const w of weapons) w.visible = true;
+    if (result.finished && combat.queued) requestAttack();
+    if (!result.finished || combat.attack) return;
+  }
   const sp = Math.hypot(player.vel.x, player.vel.z);
-  let want = 'Idle', ts = 1;
+  let want = combat.armed ? 'Idle_Attack' : 'Idle', ts = 1;
   if (!player.grounded) want = player.jumpAnim ? 'Jump' : 'Idle';
   else if (sp > 0.8) { want = 'Walk'; ts = 0.8 + sp / MAX_SPEED * 0.55; oneShot = null; player.idleT = 0; }
   else {
     player.idleT += dt;
-    if (player.idleT > 9 && !oneShot) { oneShot = 'No'; player.idleT = 0; }   // idle fidget
+    if (!combat.armed && player.idleT > 9 && !oneShot) { oneShot = 'No'; player.idleT = 0; }   // idle fidget
     if (oneShot) want = oneShot;
   }
+  if (combat.hurt > 0 && actions.HitRecieve) want = 'HitRecieve';
   play(want, 0.14, ts);
-  if (curAnim === 'Walk') {   // the walk cycle is a hop: each landing kicks a little dust
-    const t = actions.Walk.time;
+  if (curAnim === 'Walk' || curAnim === 'Walk_Armed') {   // the walk cycle is a hop: each landing kicks a little dust
+    const t = actions[curAnim].time;
     if (t < lastWalkT - 0.1) footstep();
     lastWalkT = t;
   }
-  mixer.update(dt);
+  if (!advanced) mixer.update(dt);
 }
 
 // ------------------------------------------------------------ spawn / respawn
 export function spawnAt(i) {
   const cp = islands[i].cp;
   player.pos.set(cp.x, cp.y, cp.z); player.vel.set(0, 0, 0);
+  player.flew = false; player.climbing = null; player.gliding = false; player.jumping = false; player.jumpBuf = 0; oneShot = null;
   player.grounded = true; player.ground = islands[i].col; player.lastGroundY = cp.y;
+  combat.attack = null; combat.queued = false; combat.hurt = 0;
+  combat.armed = false; combat.weaponTransition = null; combat.pendingAttack = false;
+  hooks.respawn?.(player);
+  visit('i' + i);
   player.yaw = Math.atan2(Math.cos(cp.heading), Math.sin(cp.heading));
   yawG.rotation.y = player.yaw;
   cam.yaw = Math.atan2(-Math.cos(cp.heading), -Math.sin(cp.heading));
   cam.pitch = 0.36;
-  cam.follow.copy(player.pos);
+  cam.follow.copy(player.pos); resetCameraMotion();
   syncRig();
 }
 
 // quick fade into the mist and back
 export const fade = { phase: 'in', t: 1 };
-export function startRespawn() {
+export function startRespawn(fell = false) {
   if (fade.phase !== 'none') return;
   fade.phase = 'out'; fade.t = 0;
+  if (fell) { save.falls++; persist(); }
   playSample('return', { vol: 0.4, single: true });
 }
 export function updateFade(dt) {
@@ -132,6 +231,7 @@ const SC = Object.fromEntries(Object.entries(SURF).map(([k, [c, l]]) => [k, [new
 function surfaceAt(g) {
   const p = player.pos;
   for (const w of ponds) if (Math.hypot(p.x - w.x, p.z - w.z) < w.r && Math.abs(p.y - w.y) < 0.4) return 'water';
+  if (streamAt(p.x, p.y, p.z)) return 'water';
   return g?.surface || (g && g.island !== undefined ? 'grass' : 'stone');
 }
 function dust(n, spd, size, alpha) {   // dust / blades / droplets, tinted by the surface
@@ -147,7 +247,7 @@ function footstep() {
 function onJump() {
   player.sqV += 3.2;
   player.jumpAnim = true;
-  play('Jump', 0.08, 1.35, 0.12, true);
+  if (!combat.attack && !combat.weaponTransition) play('Jump', 0.08, 1.35, 0.12, true);
   dust(5, 1.2, 0.3, 0.3);
   if (!playSample('jump', { vol: 3, jitter: 0.06 })) tone([180], { dur: 0.12, vol: 0.05, slide: 1.8 });
 }
@@ -158,17 +258,35 @@ function onLand(impact) {
   stepSound(player.surface, clamp(impact / 8, 0.7, 2));
   if (impact > 4) tone([95], { dur: 0.16, vol: Math.min(0.03 + impact * 0.008, 0.14), slide: 0.55 });
 }
+// counted achievements; call after anything they count changes
+export function checkAch() {
+  if (player.collected >= pickups.length) unlock('shards');
+  if (save.visited.length >= islands.length + secrets.length) unlock('islands');
+  if (save.detours.length >= counts.detours) unlock('detours');
+}
 function activateCheckpoint(i) {
-  player.cp = i;
+  player.cp = save.cp = i;
   areaTitle(i, 'checkpoint');
   const c = lightShrine(i);
   burst(c.x, c.y, c.z, 26, 2.2);
   tone([392, 493.88, 587.33, 783.99], { dur: 2.6, vol: 0.05, attack: 0.25, gap: 0.12 });
   oneShot = 'Yes';
+  if (i >= 3 && !save.glide) {
+    save.glide = true;
+    toast('Nova habilidade · planar', 'Sua próxima travessia tem uma corrente de ar e uma pedra larga para praticar.', 'HABILIDADE');
+  }
+  persist();
 }
+function visit(key) { if (mark('visited', key)) { checkAch(); return true; } return false; }
 function collect(k) {
   k.got = true;
+  save.got.push(pickups.indexOf(k)); persist();
   setCount(++player.collected, pickups.length, true); flashCount();
+  checkAch();
+  for (const memory of MEMORIES) if (player.collected === memory.at) {
+    mark('memories', memory.id);
+    toast(memory.title, memory.effect, 'MEMÓRIA');
+  }
   const p = k.g.position;
   burst(p.x, p.y, p.z, 22, 2.6);
   burst(p.x, p.y, p.z, 8, 1.2, SPARK_W);
@@ -178,64 +296,92 @@ function collect(k) {
 function finale() {
   summit.reached = true;
   oneShot = 'Dance';
-  message(`<b>acima da névoa</b><br>fragmentos de luz  ${player.collected} / ${pickups.length}`, 7000);
-  flashCount(7000);
   burst(summit.pos.x, summit.pos.y, summit.pos.z, 60, 4);
   tone([261.63, 329.63, 392, 523.25, 659.25], { dur: 4, vol: 0.05, attack: 0.4, gap: 0.18 });
+  hooks.finale?.();
 }
 
 // ------------------------------------------------------------ physics
-const probe = new V3();
-// dev: free flight. WASD moves along the camera's heading (looking up or down does not tilt the flight path),
-// Space rises, Shift descends; velocity eases in and out so it is easy to stop and to line up.
+const probe = new V3(), flyDir = new V3();
+const GLIDE_SPEED = 7.5, GLIDE_SINK = 2;
+// dev: free flight. W/S fly along where the camera looks (up or down included), A/D strafe, Space rises,
+// Shift descends. Velocity eases in and out so it is easy to stop and to line up; nothing collides.
 function fly(dt) {
   const p = player.pos, v = player.vel, sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw);
-  const ix = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0), iz = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
-  const up = (keys.Space ? 1 : 0) - (keys.ShiftLeft || keys.ShiftRight ? 1 : 0);
-  let tx = -sy * iz + cy * ix, tz = -cy * iz - sy * ix;
-  const l = Math.hypot(tx, tz); if (l > 0) { tx /= l; tz /= l; }
+  const { x: ix, z: iz } = move();
+  const up = (held('jump') ? 1 : 0) - (keys.ShiftLeft || keys.ShiftRight ? 1 : 0);
+  flyDir.set(-sy * iz + cy * ix, 0, -cy * iz - sy * ix);
+  if (flyDir.lengthSq() > 1) flyDir.normalize();   // diagonals no faster; analog sticks keep partial speed
+  flyDir.y = up * 0.8;
   const S = dev.flySpeed;
-  v.x = damp(v.x, tx * S, 7, dt); v.z = damp(v.z, tz * S, 7, dt); v.y = damp(v.y, up * S * 0.8, 7, dt);
+  v.x = damp(v.x, flyDir.x * S, 7, dt); v.y = damp(v.y, flyDir.y * S, 7, dt); v.z = damp(v.z, flyDir.z * S, 7, dt);
   p.addScaledVector(v, dt);
-  if (l > 0) player.yaw += angDiff(player.yaw, Math.atan2(tx, tz)) * (1 - Math.exp(-10 * dt));
-  player.grounded = false; player.ground = null; player.sq = 0; player.sqV = 0;
+  const sh = Math.hypot(v.x, v.z);
+  if (sh > 0.5) player.yaw += angDiff(player.yaw, Math.atan2(v.x, v.z)) * (1 - Math.exp(-10 * dt));
+  player.tilt = damp(player.tilt, clamp(sh / S, 0, 1) * 0.5, 6, dt);
+  player.grounded = false; player.ground = null; player.sq = 0; player.sqV = 0; player.gliding = false; player.jumpAnim = false;
+  player.lastGroundY = p.y; player.flew = true;
   syncRig(); U.player.value.copy(p);
   probe.set(p.x, p.y + 0.55, p.z);
-  for (const k of pickups) if (!k.got && k.g.position.distanceToSquared(probe) < 0.95) collect(k);
+  for (const k of pickups) if (canCollect(k) && k.g.position.distanceToSquared(probe) < 0.95) collect(k);
 }
 export function collectAll() { for (const k of pickups) if (!k.got) collect(k); }
 
 export function updatePlayer(dt) {
   if (dev.fly) return fly(dt);
   const p = player.pos, v = player.vel;
-  if (player.grounded && player.ground?.mover) p.add(player.ground.mover.delta);   // ride platforms
+  if (player.grounded && player.ground?.mover) {
+    const g = player.ground, m = g.mover;
+    p.add(m.delta);
+    if (m.yawDelta) {
+      const x = p.x - g.x, z = p.z - g.z, co = Math.cos(m.yawDelta), si = Math.sin(m.yawDelta);
+      p.x = g.x + x * co - z * si; p.z = g.z + x * si + z * co;
+      player.yaw -= m.yawDelta; cam.yaw -= m.yawDelta;
+    }
+  }
 
   const canMove = fade.phase !== 'out';
-  const ix = canMove ? (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0) : 0;
-  const iz = canMove ? (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) : 0;
+  const sub = player.ground?.water ? clamp((player.ground.w.y - p.y) / 0.7, 0, 1) : 0;   // 0 dry .. 1 swimming (head above water)
+  const mv = canMove ? move() : { x: 0, z: 0 }, ix = mv.x, iz = mv.z, moving = Math.hypot(ix, iz) > 0.05;
   let wx = 0, wz = 0;
-  if (ix || iz) {   // camera-relative
-    const sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw);
-    wx = -sy * iz + cy * ix; wz = -cy * iz - sy * ix;
-    const l = Math.hypot(wx, wz); wx *= MAX_SPEED * dev.speed / l; wz *= MAX_SPEED * dev.speed / l;
+  if (moving) {   // camera-relative; analog sticks give partial speed
+    const sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw), s = MAX_SPEED * dev.speed * (player.gliding ? 1.2 : 1) * (1 - 0.5 * sub) * (player.grounded ? (combat.attack ? (combat.attack.time / combat.attack.duration < 0.62 ? 0.5 : 0.85) : combat.weaponTransition ? 0.75 : 1) : 1);
+    wx = (-sy * iz + cy * ix) * s; wz = (-cy * iz - sy * ix) * s;
   }
-  const acc = player.grounded ? (ix || iz ? 42 : 34) : (ix || iz ? 40 : 6);   // full steering in the air, and you can brake too
-  const dx = wx - v.x, dz = wz - v.z, dl = Math.hypot(dx, dz), step = acc * dt;
-  if (dl <= step) { v.x = wx; v.z = wz; } else { v.x += dx / dl * step; v.z += dz / dl * step; }
+  if (player.gliding && canMove) {
+    // a glide always carries you forward: steer by input, otherwise keep the current heading (never stalls mid-air)
+    const cs = Math.hypot(v.x, v.z), wl = Math.hypot(wx, wz);
+    const hx = wl > 0 ? wx / wl : cs > 0.3 ? v.x / cs : Math.sin(player.yaw), hz = wl > 0 ? wz / wl : cs > 0.3 ? v.z / cs : Math.cos(player.yaw);
+    v.x = damp(v.x, hx * GLIDE_SPEED, 3.5, dt); v.z = damp(v.z, hz * GLIDE_SPEED, 3.5, dt);
+  } else {
+    const acc = player.grounded ? (moving ? 42 : 34) : (moving ? 40 : 6);   // full steering in the air, and you can brake too
+    const dx = wx - v.x, dz = wz - v.z, dl = Math.hypot(dx, dz), step = acc * dt;
+    if (dl <= step) { v.x = wx; v.z = wz; } else { v.x += dx / dl * step; v.z += dz / dl * step; }
+  }
 
   // jump: coyote time + input buffer + variable height
   player.coyote = player.grounded ? 0.12 : player.coyote - dt;
   player.jumpBuf -= dt;
   if (player.jumpBuf > 0 && player.coyote > 0 && canMove) {
-    v.y = JUMP_V * dev.jump; player.grounded = false; player.ground = null; player.coyote = 0; player.jumpBuf = 0; player.jumping = true;
+    v.y = JUMP_V * dev.jump * (1 - 0.6 * sub); player.grounded = false; player.ground = null; player.coyote = 0; player.jumpBuf = 0; player.jumping = true;
     onJump();
   }
-  if (player.jumping && v.y > 0 && !keys.Space) { v.y *= 0.5; player.jumping = false; }
+  if (player.jumping && v.y > 0 && !held('jump')) { v.y *= 0.5; player.jumping = false; }
   if (v.y <= 0) player.jumping = false;
-  v.y = Math.max(v.y - (v.y > 0 ? GRAV : GRAV * 1.4) * dev.gravity * dt, -34);
-  for (const u of updrafts) {   // wind vents lift you (and lift-off works even while standing on the vent stone)
+  // glide (learned at Ruínas do Vento): in the air press jump again and hold it. Close to the ground the press
+  // stays buffered as a normal jump for the landing instead.
+  if (!player.gliding && player.jumpBuf > 0 && !player.grounded && player.coyote <= 0 && save.glide && canMove && v.y < 3
+    && p.y - groundUnder(p.x, p.z, p.y + 0.05) > 1.3) {
+    player.gliding = true; player.jumping = false; player.jumpBuf = 0; player.glideFrom.copy(p);
+  }
+  if (player.gliding && (player.grounded || !held('jump') || !canMove)) player.gliding = false;
+  if (player.gliding) {
+    v.y = v.y > -GLIDE_SINK ? Math.max(v.y - GRAV * 0.5 * dev.gravity * dt, -GLIDE_SINK) : damp(v.y, -GLIDE_SINK, 5, dt);   // soft catch, then a steady sink
+    if (Math.hypot(p.x - player.glideFrom.x, p.z - player.glideFrom.z) >= 25) unlock('glide');
+  } else v.y = Math.max(v.y - (v.y > 0 ? GRAV : GRAV * 1.4) * dev.gravity * dt, -34);
+  for (const u of updrafts) {   // wind vents lift you (and lift-off works even while standing on the vent stone); gliding rides them higher
     const ux = p.x - u.x, uz = p.z - u.z;
-    if (ux * ux + uz * uz < u.r * u.r && p.y > u.y - 0.3 && p.y < u.y + u.h) { v.y = Math.min(v.y + 70 * dt, 7.5); player.jumping = false; }
+    if (ux * ux + uz * uz < u.r * u.r && p.y > u.y - 0.3 && p.y < u.y + u.h) { v.y = Math.min(v.y + (player.gliding ? 90 : 70) * dt, player.gliding ? 10 : 7.5); player.jumping = false; }
   }
 
   // climbing: pushing into a `climb` wall carries you up; near the top you mantle onto it
@@ -245,17 +391,39 @@ export function updatePlayer(dt) {
     p.x = prevClimb.x + cx * k; p.z = prevClimb.z + cz * k; p.y = prevClimb.y; v.y = 0; v.x *= 0.2; v.z *= 0.2;
   }
 
-  // horizontal move + cylinder walls
+  // storms: a crosswind pushes you while you are in the air (much more when gliding)
+  const storm = clamp((game.wx.rain - 0.55) / 0.4, 0, 1);
+  if (storm > 0 && !player.grounded) {
+    const k = storm * (0.6 + 0.8 * U.gust.value) * (player.gliding ? 3 : 1.2);
+    p.x += WIND.x * k * dt; p.z += WIND.y * k * dt;
+  }
+
+  // horizontal move + walls. In a lake the island's own top (at water level) is not there: you go down into it.
   p.x += v.x * dt; p.z += v.z * dt;
-  for (const c of colliders) {
-    if (p.y >= c.y - 0.3 || p.y + PH <= c.y - c.thick) continue;
+  const cur = player.grounded ? streamAt(p.x, p.y, p.z) : null;   // running water carries you downstream
+  if (cur) { p.x += cur[0] * dt; p.z += cur[1] * dt; }
+  const water = waterAt(p.x, p.z), under = c => water && !c.mover && Math.abs(c.y - water.y) < 0.02;
+  for (const c of near(p.x, p.z)) {
+    if (c.gone || under(c) || p.y >= c.y - 0.33 || p.y + PH <= c.y - c.thick) continue;   // gone = a crumbled platform; 0.33 = what the step-up climbs
     const ddx = p.x - c.x, ddz = p.z - c.z, d2 = ddx * ddx + ddz * ddz, rm = c.rMax + PR;
     if (d2 > rm * rm) continue;
-    const d = Math.sqrt(d2), rr = colR(c, Math.atan2(ddz, ddx)) + PR;
-    if (d >= rr) continue;
+    let nx, nz, push;
+    if (c.rect) {   // box: push out from the closest point of the rectangle
+      const [lx, lz] = toLocal(c, p.x, p.z), [hw, hd, rot] = c.rect;
+      const ex = lx - clamp(lx, -hw, hw), ez = lz - clamp(lz, -hd, hd), d = Math.hypot(ex, ez);
+      if (d >= PR) continue;
+      let ax = 0, az = 0;
+      if (d > 1e-4) { ax = ex / d; az = ez / d; push = PR - d; }
+      else if (hw - Math.abs(lx) < hd - Math.abs(lz)) { ax = Math.sign(lx) || 1; push = hw - Math.abs(lx) + PR; }   // centre inside: nearest face
+      else { az = Math.sign(lz) || 1; push = hd - Math.abs(lz) + PR; }
+      nx = ax * Math.cos(rot) - az * Math.sin(rot); nz = ax * Math.sin(rot) + az * Math.cos(rot);
+    } else {
+      const d = Math.sqrt(d2), rr = colR(c, Math.atan2(ddz, ddx), Math.max(c.y - p.y - PH, 0), Math.max(c.y - p.y, 0)) + PR;
+      if (d >= rr || ((c.inner || c.cut) && inHollow(c, p.x, p.z))) continue;   // empty middle / bite: no wall, you just fall
+      nx = d > 1e-4 ? ddx / d : 1; nz = d > 1e-4 ? ddz / d : 0; push = rr - d;
+    }
     if (v.y > 0 && p.y + PH < c.y - c.thick + 0.35) { p.y = c.y - c.thick - PH; v.y = 0; player.jumping = false; continue; }  // head bump
-    const nx = d > 1e-4 ? ddx / d : 1, nz = d > 1e-4 ? ddz / d : 0;
-    p.x = c.x + nx * rr; p.z = c.z + nz * rr;
+    p.x += nx * push; p.z += nz * push;
     if (c.climb && wx * nx + wz * nz < -2) { player.climbing = c; v.y = 3.6; player.jumping = false; }
     const vn = v.x * nx + v.z * nz;
     if (vn < 0) { v.x -= vn * nx; v.z -= vn * nz; }
@@ -266,48 +434,61 @@ export function updatePlayer(dt) {
   p.y += v.y * dt;
   let best = null, bestY = -Infinity;
   const stepUp = player.grounded ? 0.32 : 0.06;
-  for (const c of colliders) {
-    if (!c.ground || c.y <= bestY) continue;
+  for (const c of near(p.x, p.z)) {
+    if (!c.ground || c.y <= bestY || under(c)) continue;
     const ddx = p.x - c.x, ddz = p.z - c.z, d2 = ddx * ddx + ddz * ddz;
-    if (d2 > (c.rMax + 0.15) ** 2) continue;
-    const rr = colR(c, Math.atan2(ddz, ddx)) + 0.12;
-    if (d2 > rr * rr) continue;
+    if (d2 > (c.rMax + 0.15) ** 2 || !inside(c, p.x, p.z, 0.12)) continue;
     if (c.y > prevY + stepUp + (c.mover ? Math.max(c.mover.delta.y, 0) : 0)) continue;
     best = c; bestY = c.y;
+  }
+  if (water) {   // the lake bed (you stand on it, or float at swimming depth) competes with stones in the water
+    const fy = Math.max(waterFloor(water, p.x, p.z), water.y - 0.7);   // deeper than that you swim, head above water
+    if (fy > bestY && fy <= prevY + stepUp) { best = Object.assign(water.col, { y: fy, w: water }); bestY = fy; }
   }
   if (best && v.y <= 0 && p.y <= bestY + (player.grounded ? 0.3 : 0)) {
     const impact = -v.y;
     p.y = bestY; v.y = 0;
     player.ground = best; player.surface = surfaceAt(best);
     if (!player.grounded) onLand(impact);
-    player.grounded = true; player.lastGroundY = bestY; if (!best.mover) (player.safePos ??= new V3()).copy(p); best.stood = game.gameT;
+    player.grounded = true; player.lastGroundY = bestY; if (!best.mover && !best.water) (player.safePos ??= new V3()).copy(p); best.stood = game.gameT;
   } else { player.grounded = false; player.ground = null; }
 
-  if (p.y < islands[player.cp].y - 26) {
-    if (dev.safe && player.safePos) { p.copy(player.safePos); v.set(0, 0, 0); } else if (!dev.safe) startRespawn();   // dev: falling puts you back where you last stood
+  // after dev flight you may be far below your checkpoint on purpose: only the lowest island counts
+  if (p.y < (player.flew ? Math.min(...islands.map(i => i.y)) : islands[player.cp].y) - 26) {
+    if (dev.safe && player.safePos) { p.copy(player.safePos); v.set(0, 0, 0); } else if (!dev.safe) startRespawn(true);   // dev: falling puts you back where you last stood
   }
 
   // gameplay triggers
   if (player.grounded) {
-    const isl = player.ground.island;
-    if (isl !== undefined && isl > player.cp) activateCheckpoint(isl);
-    if (player.ground.goal && !summit.reached) finale();
+    const g = player.ground;
+    if (g.island !== undefined) { if (g.island > player.cp) activateCheckpoint(g.island); visit('i' + g.island); }
+    if (g.secret !== undefined) visit('s' + g.secret);
+    if (g.whaleDeck) unlock('whale');
+    if (g.detour !== undefined && mark('detours', g.detour)) checkAch();
+    if (g.goal && !summit.reached) finale();
   }
   probe.set(p.x, p.y + 0.55, p.z);
-  for (const k of pickups) if (!k.got && k.g.position.distanceToSquared(probe) < 0.95) collect(k);
+  for (const k of pickups) if (canCollect(k) && k.g.position.distanceToSquared(probe) < 0.95) collect(k);
 
   // visuals: facing, lean, squash & stretch
   const sp = Math.hypot(v.x, v.z);
-  if (sp > 0.3 && (ix || iz || !player.grounded)) player.yaw += angDiff(player.yaw, Math.atan2(v.x, v.z)) * (1 - Math.exp(-14 * dt));
-  player.tilt = damp(player.tilt, player.grounded ? sp / MAX_SPEED * 0.12 : clamp(-v.y * 0.01, -0.1, 0.12), 8, dt);
-  const sqT = player.grounded ? 0 : clamp(v.y * 0.012, -0.08, 0.12);
+  glideSound(player.gliding ? clamp(sp / 6, 0.4, 1) : 0);
+  waterWake.value = damp(waterWake.value, player.ground?.water || (player.grounded && player.surface === 'water') ? 0.35 + clamp(sp / 4, 0, 0.65) : 0, 4, dt);
+  if (player.gliding && Math.random() < dt * 14) sparks.emit(p.x + Math.random() - 0.5, p.y + 0.7, p.z + Math.random() - 0.5, -v.x * 0.3, 0.2, -v.z * 0.3, 0.8, 0.05, SPARK_W, 0.5);
+  if (combat.attack && combat.attack.time < combat.attack.duration * 0.24 && moving) {
+    const target = attackDirection();
+    combat.attack.aimYaw = hooks.aim?.(player, target) ?? target;
+  }
+  if (!combat.attack && sp > 0.3 && (moving || !player.grounded)) player.yaw += angDiff(player.yaw, Math.atan2(player.grounded && moving ? wx : v.x, player.grounded && moving ? wz : v.z)) * (1 - Math.exp(-18 * dt));
+  player.tilt = damp(player.tilt, player.gliding ? 0.32 : player.grounded ? sp / MAX_SPEED * 0.12 : clamp(-v.y * 0.01, -0.1, 0.12), 8, dt);
+  const sqT = player.gliding ? -0.1 : player.grounded ? 0 : clamp(v.y * 0.012, -0.08, 0.12);
   player.sqV += (-(player.sq - sqT) * 240 - player.sqV * 13) * dt;
   player.sq = clamp(player.sq + player.sqV * dt, -0.45, 0.45);
   syncRig();
   U.player.value.copy(p);
 }
 
-function syncRig() {
+export function syncRig() {
   const p = player.pos;
   root.position.copy(p); yawG.rotation.y = player.yaw; tiltG.rotation.x = player.tilt;
   const s = 1 + player.sq, sx = 1 / Math.sqrt(s);
