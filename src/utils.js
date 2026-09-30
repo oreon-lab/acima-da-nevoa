@@ -8,6 +8,7 @@ export const angDiff = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
 
 // seeded rng (mulberry32) so the world is the same every run
 let seed = 7;
+export const reseed = s => { seed = s; };   // buildLevel reseeds, so module-load rand() calls can't shift the world
 export const rnd = () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 export const rand = (a, b) => a + (b - a) * rnd();
 export const pick = a => a[(rnd() * a.length) | 0];

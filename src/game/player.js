@@ -1,7 +1,7 @@
 // The hopping head: movement, collisions, animation, checkpoints, collectibles, respawn.
 import * as THREE from 'three';
 import { scene, U, keys, game } from '../core.js';
-import { PR, PH, MAX_SPEED, JUMP_V, GRAV, WIND, dev } from '../config.js';
+import { PR, PH, MAX_SPEED, JUMP_V, GRAV, WIND, dev, settings } from '../config.js';
 import { swordGroups } from './characterAsset.js';
 import { combat, beginAttack, advanceAttack, ATTACK_RATE, DRAW_RATE, IMPACTS } from './combatRules.js';
 import { V3, clamp, damp, angDiff } from '../utils.js';
@@ -9,18 +9,20 @@ import { islands, secrets, counts, pickups, summit, updrafts, ponds, colR, groun
 import { lightShrine, waterWake } from '../procedural/objects/index.js';
 import { puff, burst, sparks, SPARK_W } from '../fx/particles.js';
 import { grade } from '../render/post.js';
-import { tone, playSample, stepSound, glideSound, swordWhoosh } from './audio.js';
+import { tone, playSample, stepSound, glideSound, swordWhoosh, dashSound } from './audio.js';
 import { setCount, flashCount, areaTitle, toast } from './ui.js';
 import { canCollect, MEMORIES } from './journeyRules.js';
-import { held, move } from './input.js';
+import { held, move, rumble } from './input.js';
 import { save, persist, mark, unlock } from './progress.js';
-import { cam, resetCameraMotion } from './camera.js';
+import { cam, resetCameraMotion, dashFx } from './camera.js';
 
 export const player = {
   pos: new V3(), vel: new V3(), grounded: false, ground: null, lastGroundY: 0, coyote: 0, jumpBuf: 0,
   jumping: false, jumpAnim: false, yaw: 0, sq: 0, sqV: 0, tilt: 0, cp: 0, idleT: 0, collected: 0,
   climbing: null, gliding: false, glideFrom: new V3(),
+  dashT: 0, dashCd: 0, dashX: 0, dashZ: 0, airDashed: false,
 };
+export const setPlayerVisible = v => { root.visible = v; };   // the body is hidden in first person
 export const hooks = { finale: null, strike: null, aim: null, respawn: null };
 
 // rig: position -> facing -> lean -> squash & stretch -> model
@@ -70,6 +72,28 @@ export function requestAttack() {
   return true;
 }
 
+// ------------------------------------------------------------ dash
+// A short burst along the input direction (or where you face): one on the ground, one more per airtime.
+const DASH_TIME = 0.2, DASH_SPEED = 17, DASH_COOLDOWN = 0.55;
+export function requestDash() {
+  if (game.state !== 'play' || fade.phase !== 'none' || dev.fly || player.climbing || player.ground?.water
+    || player.dashT > 0 || player.dashCd > 0 || combat.hurt > 0 || combat.weaponTransition) return false;
+  if (!player.grounded && player.airDashed) return false;
+  const { x, z } = move(), sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw);
+  let dx = -sy * z + cy * x, dz = -cy * z - sy * x;
+  if (Math.hypot(dx, dz) < 0.15) { dx = Math.sin(player.yaw); dz = Math.cos(player.yaw); }
+  const l = Math.hypot(dx, dz);
+  player.dashX = dx / l; player.dashZ = dz / l; player.dashT = DASH_TIME; player.dashCd = DASH_COOLDOWN;
+  if (!player.grounded) player.airDashed = true;
+  player.gliding = false; player.jumping = false;
+  combat.attack = null; combat.queued = false;
+  player.yaw = Math.atan2(player.dashX, player.dashZ);
+  player.sqV += 2;   // a slight stretch
+  const p = player.pos;
+  puff(p.x, p.y, p.z, 4, 1.4, 0.22, 0.22);
+  dashSound();
+  dashFx.start(); return true;
+}
 export function toggleWeapons() {
   if (game.state !== 'play' || fade.phase !== 'none' || player.climbing || dev.fly
     || combat.attack || combat.weaponTransition || combat.hurt > 0) return false;
@@ -79,7 +103,7 @@ export function toggleWeapons() {
 export function receiveHit() {
   combat.attack = null; combat.queued = false; combat.hurt = 0.35;
   combat.weaponTransition = null; combat.pendingAttack = false;
-  oneShot = 'HitRecieve';
+  oneShot = 'HitRecieve'; rumble(0.8, 180);
   play('HitRecieve', 0.05, 1, 0, true);
 }
 
@@ -157,7 +181,8 @@ export function updateAnim(dt) {
     }
     a.swish ??= 0;
     while (a.swish < IMPACTS.length && a.time + dt >= a.duration * IMPACTS[a.swish] - 0.065)
-      swordWhoosh(a.swish++);
+    { const side = a.swish % 2 ? -0.7 : 0.7, sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);   // each blade swings on its own side of the body
+      swordWhoosh(a.swish++, { x: player.pos.x + cy * side + sy * 0.6, y: player.pos.y + 1, z: player.pos.z - sy * side + cy * 0.6 }); }
   }
   const result = advanceAttack(combat, dt);
   if (attacking) {
@@ -191,7 +216,7 @@ export function updateAnim(dt) {
 export function spawnAt(i) {
   const cp = islands[i].cp;
   player.pos.set(cp.x, cp.y, cp.z); player.vel.set(0, 0, 0);
-  player.flew = false; player.climbing = null; player.gliding = false; player.jumping = false; player.jumpBuf = 0; oneShot = null;
+  player.dashT = 0; player.dashCd = 0; player.climbing = null; player.gliding = false; player.jumping = false; player.jumpBuf = 0; oneShot = null;
   player.grounded = true; player.ground = islands[i].col; player.lastGroundY = cp.y;
   combat.attack = null; combat.queued = false; combat.hurt = 0;
   combat.armed = false; combat.weaponTransition = null; combat.pendingAttack = false;
@@ -249,14 +274,16 @@ function onJump() {
   player.jumpAnim = true;
   if (!combat.attack && !combat.weaponTransition) play('Jump', 0.08, 1.35, 0.12, true);
   dust(5, 1.2, 0.3, 0.3);
-  if (!playSample('jump', { vol: 3, jitter: 0.06 })) tone([180], { dur: 0.12, vol: 0.05, slide: 1.8 });
+  const feet = { x: player.pos.x, y: player.pos.y + 0.2, z: player.pos.z };
+  if (!playSample('jump', { vol: 3, jitter: 0.06, at: feet })) tone([180], { dur: 0.12, vol: 0.05, slide: 1.8, at: feet });
 }
 function onLand(impact) {
   player.sqV -= Math.min(impact * 0.22, 4.5);
   player.jumpAnim = false;
   dust(Math.round(clamp(impact * 0.9, 3, 16)), 0.8 + impact * 0.12, 0.35 + impact * 0.02, 0.45);
   stepSound(player.surface, clamp(impact / 8, 0.7, 2));
-  if (impact > 4) tone([95], { dur: 0.16, vol: Math.min(0.03 + impact * 0.008, 0.14), slide: 0.55 });
+  if (impact > 12) rumble(Math.min(impact / 30, 0.7), 100);
+  if (impact > 4) tone([95], { dur: 0.16, vol: Math.min(0.03 + impact * 0.008, 0.14), slide: 0.55, at: player.pos });
 }
 // counted achievements; call after anything they count changes
 export function checkAch() {
@@ -269,7 +296,7 @@ function activateCheckpoint(i) {
   areaTitle(i, 'checkpoint');
   const c = lightShrine(i);
   burst(c.x, c.y, c.z, 26, 2.2);
-  tone([392, 493.88, 587.33, 783.99], { dur: 2.6, vol: 0.05, attack: 0.25, gap: 0.12 });
+  tone([392, 493.88, 587.33, 783.99], { dur: 2.6, vol: 0.05, attack: 0.25, gap: 0.12, at: c });
   oneShot = 'Yes';
   if (i >= 3 && !save.glide) {
     save.glide = true;
@@ -291,13 +318,13 @@ function collect(k) {
   burst(p.x, p.y, p.z, 22, 2.6);
   burst(p.x, p.y, p.z, 8, 1.2, SPARK_W);
   const base = [659.25, 783.99, 987.77, 1174.66][player.collected % 4];
-  tone([base, base * 1.5], { dur: 1.1, vol: 0.06, gap: 0.09 });
+  tone([base, base * 1.5], { dur: 1.1, vol: 0.06, gap: 0.09, at: p });
 }
 function finale() {
   summit.reached = true;
   oneShot = 'Dance';
   burst(summit.pos.x, summit.pos.y, summit.pos.z, 60, 4);
-  tone([261.63, 329.63, 392, 523.25, 659.25], { dur: 4, vol: 0.05, attack: 0.4, gap: 0.18 });
+  tone([261.63, 329.63, 392, 523.25, 659.25], { dur: 4, vol: 0.05, attack: 0.4, gap: 0.18, at: summit.pos });
   hooks.finale?.();
 }
 
@@ -320,7 +347,8 @@ function fly(dt) {
   if (sh > 0.5) player.yaw += angDiff(player.yaw, Math.atan2(v.x, v.z)) * (1 - Math.exp(-10 * dt));
   player.tilt = damp(player.tilt, clamp(sh / S, 0, 1) * 0.5, 6, dt);
   player.grounded = false; player.ground = null; player.sq = 0; player.sqV = 0; player.gliding = false; player.jumpAnim = false;
-  player.lastGroundY = p.y; player.flew = true;
+  player.lastGroundY = p.y;
+  if (cam.first && !combat.attack) player.yaw = cam.yaw + Math.PI;
   syncRig(); U.player.value.copy(p);
   probe.set(p.x, p.y + 0.55, p.z);
   for (const k of pickups) if (canCollect(k) && k.g.position.distanceToSquared(probe) < 0.95) collect(k);
@@ -357,6 +385,18 @@ export function updatePlayer(dt) {
     const acc = player.grounded ? (moving ? 42 : 34) : (moving ? 40 : 6);   // full steering in the air, and you can brake too
     const dx = wx - v.x, dz = wz - v.z, dl = Math.hypot(dx, dz), step = acc * dt;
     if (dl <= step) { v.x = wx; v.z = wz; } else { v.x += dx / dl * step; v.z += dz / dl * step; }
+  }
+
+  player.dashCd -= dt;
+  if (player.grounded) player.airDashed = false;
+  if (player.dashT > 0) {
+    player.dashT -= dt;
+    v.x = player.dashX * DASH_SPEED; v.z = player.dashZ * DASH_SPEED;
+    if (!player.grounded) v.y = Math.max(v.y * 0.85, -1.5);   // barely falls while dashing through the air
+    // streak of light along the path, and dust while it runs on the ground
+    if (Math.random() < dt * 30) sparks.emit(p.x + (Math.random() - 0.5) * 0.3, p.y + 0.3 + Math.random() * 0.6, p.z + (Math.random() - 0.5) * 0.3, -player.dashX * 0.8, 0.05, -player.dashZ * 0.8, 0.3, 0.06, SPARK_W, 0.35);
+    if (player.grounded && Math.random() < dt * 12) puff(p.x, p.y, p.z, 1, 0.8, 0.2, 0.18);
+    if (player.dashT <= 0) { v.x *= 0.45; v.z *= 0.45; }   // out of the dash with a little momentum left
   }
 
   // jump: coyote time + input buffer + variable height
@@ -453,8 +493,9 @@ export function updatePlayer(dt) {
     player.grounded = true; player.lastGroundY = bestY; if (!best.mover && !best.water) (player.safePos ??= new V3()).copy(p); best.stood = game.gameT;
   } else { player.grounded = false; player.ground = null; }
 
-  // after dev flight you may be far below your checkpoint on purpose: only the lowest island counts
-  if (p.y < (player.flew ? Math.min(...islands.map(i => i.y)) : islands[player.cp].y) - 26) {
+  // Falling into the void resets you, but walking or falling down onto a lower island never does: the checkpoint
+  // only counts when nothing is left underneath you (or you are below every island).
+  if (p.y < islands[player.cp].y - 26 && (groundUnder(p.x, p.z, p.y + 0.05) === -Infinity || p.y < Math.min(...islands.map(i => i.y)) - 26)) {
     if (dev.safe && player.safePos) { p.copy(player.safePos); v.set(0, 0, 0); } else if (!dev.safe) startRespawn(true);   // dev: falling puts you back where you last stood
   }
 
@@ -480,7 +521,8 @@ export function updatePlayer(dt) {
     combat.attack.aimYaw = hooks.aim?.(player, target) ?? target;
   }
   if (!combat.attack && sp > 0.3 && (moving || !player.grounded)) player.yaw += angDiff(player.yaw, Math.atan2(player.grounded && moving ? wx : v.x, player.grounded && moving ? wz : v.z)) * (1 - Math.exp(-18 * dt));
-  player.tilt = damp(player.tilt, player.gliding ? 0.32 : player.grounded ? sp / MAX_SPEED * 0.12 : clamp(-v.y * 0.01, -0.1, 0.12), 8, dt);
+  if (cam.first && !combat.attack) player.yaw = cam.yaw + Math.PI;   // first person: the body always faces where you look
+  player.tilt = damp(player.tilt, player.dashT > 0 ? 0.28 : player.gliding ? 0.32 : player.grounded ? sp / MAX_SPEED * 0.12 : clamp(-v.y * 0.01, -0.1, 0.12), 8, dt);
   const sqT = player.gliding ? -0.1 : player.grounded ? 0 : clamp(v.y * 0.012, -0.08, 0.12);
   player.sqV += (-(player.sq - sqT) * 240 - player.sqV * 13) * dt;
   player.sq = clamp(player.sq + player.sqV * dt, -0.45, 0.45);

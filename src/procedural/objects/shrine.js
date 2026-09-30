@@ -1,6 +1,6 @@
 // Checkpoint shrine: a stepped stone lantern with a hexagonal roof and a crystal that lights up when reached.
 import * as THREE from 'three';
-import { scene, camera } from '../../core.js';
+import { scene, camera, game } from '../../core.js';
 import { rnd, rand, damp } from '../../utils.js';
 import { bake, crystalGeo } from '../geometry.js';
 import { addCol, pushGeo, shrines } from '../world.js';
@@ -49,13 +49,16 @@ export function lightShrine(i) {
   return s.crystal.position;
 }
 
+// back to all unlit (new journey)
+export function resetShrines() { for (const s of shrines) { s.mat.color.set('#dfe6f2'); s.mat.emissive.set('#8fa6c4'); } }
+
 let emberT = 0;
 export function updateShrines(t, dt, cp, emit) {
   shrines.forEach((s, i) => {
     const on = i <= cp;
     s.crystal.rotation.y = t * 0.9 + i;
     s.crystal.position.y = s.baseY + Math.sin(t * 1.4 + i) * 0.03;   // gentle float
-    s.mat.emissiveIntensity = on ? 2.2 + Math.sin(t * 2 + i) * 0.4 : 0.25;
+    s.mat.emissiveIntensity = on ? 2.2 + game.restoration * 1.2 + Math.sin(t * 2 + i) * 0.4 : 0.25;
     s.halo.visible = on;
     if (on) { s.halo.quaternion.copy(camera.quaternion); s.halo.scale.setScalar(1.5 + 0.2 * Math.sin(t * 2 + i)); s.halo.position.copy(s.crystal.position); }
   });

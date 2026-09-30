@@ -162,11 +162,11 @@ const SPECIES = {
   pine, birch, willow, acacia,
 };
 
-export function addTree(x, y, z, pal, scale = 1) {
+export function addTree(x, y, z, pal, scale = 1, detailed = false) {
   const t = pal.t;
   let kind = pal.style ?? (t > 0.66 ? 'cherry' : t > 0.33 && t < 0.7 && rnd() < 0.45 ? 'pine' : 'oak');
   if (kind === 'birch' && rnd() < 0.3) kind = 'cherry';   // a few blossoming trees among the birches
-  const h = SPECIES[kind]({ pal, scale, lod: scale !== 1, put: (g, fn, sway) => pushGeo(bake(g, fn, sway), x, y, z), push: g => pushGeo(g, x, y, z) });
+  const h = SPECIES[kind]({ pal, scale, lod: scale !== 1 && !detailed, put: (g, fn, sway) => pushGeo(bake(g, fn, sway), x, y, z), push: g => pushGeo(g, x, y, z) });
   // trunk blocks the player (scaled-up background trees are not solid)
-  if (scale === 1) addCol({ x, z, y: y + h, r: kind === 'willow' ? 0.3 : 0.22, thick: h + 0.5, ground: false, depth: 0 });
+  if (scale === 1 || detailed) addCol({ x, z, y: y + h, r: (kind === 'willow' ? 0.3 : 0.22) * scale, thick: h + 0.5, ground: false, depth: 0 });
 }

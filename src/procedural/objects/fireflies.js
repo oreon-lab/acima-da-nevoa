@@ -14,8 +14,8 @@ export function addFireflies(isl, n = 36) {
   g.setAttribute('aRand', new THREE.BufferAttribute(r, 4));
   const pts = new THREE.Points(g, new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    uniforms: { uTime: U.time, uScale: U.pscale },
-    vertexShader: `uniform float uTime, uScale; attribute vec4 aRand; varying float vA;
+    uniforms: { uTime: U.time, uScale: U.pscale, uNight: U.night },
+    vertexShader: `uniform float uTime, uScale, uNight; attribute vec4 aRand; varying float vA;
     void main(){
       vec3 p = position;
       p.x += sin(uTime * 0.4 + aRand.x * 6.28) * 0.9;
@@ -23,7 +23,7 @@ export function addFireflies(isl, n = 36) {
       p.y += sin(uTime * 0.6 + aRand.z * 6.28) * 0.35;
       vec4 mv = modelViewMatrix * vec4(p, 1.0);
       gl_PointSize = uScale * 0.07 / max(-mv.z, 0.1);
-      vA = pow(max(sin(uTime * (0.7 + aRand.w * 0.9) + aRand.x * 20.0), 0.0), 3.0);   // slow blink
+      vA = pow(max(sin(uTime * (0.7 + aRand.w * 0.9) + aRand.x * 20.0), 0.0), 3.0) * mix(0.3, 1.0, uNight);   // slow blink, brighter at night
       gl_Position = projectionMatrix * mv;
     }`,
     fragmentShader: `varying float vA; void main(){ float a = 1.0 - smoothstep(0.0, 0.5, length(gl_PointCoord - 0.5)); gl_FragColor = vec4(${col3('#e6ff8c')} * 1.6, a * a * vA); }`,

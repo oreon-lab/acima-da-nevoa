@@ -17,8 +17,8 @@ const crackedFn = pal => (cen, n, c) => {
 export function addPlatform(x, y, z, r, style, pal, motion) {
   let geo, c;
   if (style === 'pillar') {
-    const d = rand(2.2, 4);
-    geo = rockMass(r, null, P_PILLAR(d), 8, (cen, n, col) => {
+    const d = rand(2.2, 4), prof = P_PILLAR(d);
+    geo = rockMass(r, null, prof, 8, (cen, n, col) => {
       col.copy(pal.stone).multiplyScalar(n.y > 0.6 ? 1.08 : rand(0.84, 0.97));
       if (cen.y > -0.34 && cen.y < -0.24) col.multiplyScalar(0.78);                 // carved groove under the capital
       if (n.y > 0.6 && rnd() < 0.45) col.lerp(pal.moss, 0.7);                        // moss on top
@@ -26,12 +26,12 @@ export function addPlatform(x, y, z, r, style, pal, motion) {
       if (cen.y < -d * 0.7 && rnd() < 0.5) col.lerp(pal.moss, 0.4);
       if (cen.y < -d) col.copy(pal.rock);
     });
-    c = { r: r * 0.9, depth: d + 1.5 };
+    c = { r, prof, depth: d + 1.5 };
   } else {
     const slab = style === 'slab' || style === 'crumble', d = slab ? rand(1.2, 1.7) : rand(2.2, 3.4);
-    const h = shapeH(0.8);
-    geo = rockMass(r, h, (slab ? P_SLAB : P_STONE)(d), slab ? 8 : 9, style === 'crumble' ? crackedFn(pal) : islandColor(pal));
-    c = { r: r * 0.97, h, depth: d };
+    const h = shapeH(0.8), prof = (slab ? P_SLAB : P_STONE)(d);
+    geo = rockMass(r, h, prof, slab ? 8 : 9, style === 'crumble' ? crackedFn(pal) : islandColor(pal));
+    c = { r, h, prof, depth: d };
   }
   c = addCol(Object.assign(c, { x, y, z, surface: style === 'crumble' ? 'sand' : style === 'pillar' || motion ? 'stone' : 'grass' }));
   if (motion) {

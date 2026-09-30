@@ -1,0 +1,21 @@
+# Modelos 3D (Poly Pizza, todos CC0)
+
+- `statue.glb`: "Fox Statue" by Quaternius, https://poly.pizza/m/abxyXID5EA. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `well.glb`: "Well" by Quaternius, https://poly.pizza/m/QlqncKYxXb. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `barrel.glb`: "Barrel" by Quaternius, https://poly.pizza/m/ONdghDBByN. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `crate.glb`: "Crate" by Quaternius, https://poly.pizza/m/3VGWnZPXmG. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `bench.glb`: "Bench" by Quaternius, https://poly.pizza/m/jLxjFxFRpw. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `bookcase.glb`: "Bookshelf" by CreativeTrio, https://poly.pizza/m/30Iealxb0p. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `table.glb`: "Table" by Kenney, https://poly.pizza/m/41R2HTYj1O. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `chest.glb`: "Chest" by Kenney, https://poly.pizza/m/g54i2tEIEs. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `pot.glb`: "Small Pot" by Isa Lousberg, https://poly.pizza/m/EjD1AJfTa4. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `cart.glb`: "Broken Cart" by Quaternius, https://poly.pizza/m/NBDHe8J7f9. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `banner.glb`: "Banner" by Quaternius, https://poly.pizza/m/svYG8KZxjq. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `torch.glb`: "Wooden Torch" by Quaternius, https://poly.pizza/m/pNsfJzhXiD. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `books.glb`: "Books" by Kenney, https://poly.pizza/m/M2cJ5sVUgJ. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `arch_ruins.glb`: "Arch" by Quaternius, https://poly.pizza/m/QwWdOcNIMh. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `column_ruins.glb`: "Column" by Quaternius, https://poly.pizza/m/wLubNpOTX4. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `tree_floating.glb`: "Tree Floating" by Quaternius, https://poly.pizza/m/tj2fePl8Eu. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `tree_light.glb`: "Tree Light" by Quaternius, https://poly.pizza/m/0bVHWZZnNg. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `windmill.glb`: "Tower Windmill" by Quaternius, https://poly.pizza/m/52yaPyaAAG. Licence at https://creativecommons.org/publicdomain/zero/1.0/
+- `mushroom_large.glb`: "Mushroom" by Quaternius, https://poly.pizza/m/db1tjMhmiA. Licence at https://creativecommons.org/publicdomain/zero/1.0/

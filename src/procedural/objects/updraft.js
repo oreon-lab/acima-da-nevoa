@@ -20,6 +20,7 @@ const tubeMat = new THREE.ShaderMaterial({
 export function addUpdraft(x, y, z, r, h) {
   updrafts.push({ x, y, z, r, h });
   const tube = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.85, h, 16, 1, true).translate(0, h / 2, 0), tubeMat.clone());
+  tube.material.uniforms.uTime = U.time; // cloning a material otherwise freezes this shared clock
   tube.material.uniforms.uH.value = h;
   tube.position.set(x, y, z); tube.frustumCulled = false;
   const n = 40, p = new Float32Array(n * 3), q = new Float32Array(n * 3);

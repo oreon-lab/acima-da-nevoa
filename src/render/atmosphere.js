@@ -25,7 +25,9 @@ float fogAmount(vec3 wp, float dens){
   float d = length(wp - cameraPosition);
   float hMin = min(wp.y, cameraPosition.y);
   float layer = 1.0 - smoothstep(${f4(FOG_LAYER - 34)}, ${f4(FOG_LAYER + 8)}, hMin);
-  return 1.0 - exp(-d * (dens + 0.015 * layer));
+  // Keep the first landing targets readable; the distant horizon still dissolves into mist.
+  float nearClear = mix(0.32, 1.0, smoothstep(7.0, 28.0, d));
+  return 1.0 - exp(-d * (dens + 0.015 * layer) * nearClear);
 }`;
 
 // Custom shaders share one sun/moon direction and one sky tint (both change with the time of day).
@@ -55,7 +57,7 @@ ${ATMOS_CORE}
 #endif`;
 THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
   vec3 fogSun = vec3(0.0, 1.0, 0.0);
-  #if NUM_DIR_LIGHTS > 0
+  #if NUM_DIR_LIGHTS > 0 && (defined(STANDARD) || defined(PHONG) || defined(LAMBERT) || defined(TOON))
     fogSun = transpose(mat3(viewMatrix)) * directionalLights[0].direction;   // world-space direction of the sun/moon light
   #endif
   gl_FragColor.rgb = mix(gl_FragColor.rgb, atmosColS(normalize(vFogWorldPos - cameraPosition), fogSun) * fogColor, fogAmount(vFogWorldPos, fogDensity));
@@ -186,6 +188,7 @@ const NIGHT = new THREE.Color(0.09, 0.12, 0.26), WHITE = new THREE.Color(1, 1, 1
 const SUN_C = new THREE.Color('#ffe0bb'), SUN_LOW = new THREE.Color('#ff9d5c'), MOON_C = new THREE.Color('#9db4ff'), tmp = new THREE.Color();
 const SKY_D = new THREE.Color('#d2e2ef'), SKY_N = new THREE.Color('#2a3558'), GND_D = new THREE.Color('#6a604f'), GND_N = new THREE.Color('#20242f');
 const STORM = new THREE.Color(0.42, 0.45, 0.5), sunV = new V3(), moonV = new V3();
+const lr = new V3(), lu = new V3(), snapped = new V3(), UPV = new V3(0, 1, 0), AX = new V3(1, 0, 0);
 
 // wind gusts, slow light variation, altitude-dependent fog, time of day; returns normalised altitude
 export function updateAtmosphere(t, dt, focus, top, tod = 0.08) {
@@ -198,7 +201,7 @@ export function updateAtmosphere(t, dt, focus, top, tod = 0.08) {
   sunV.set(HX * c0, s, HZ * c0);
   moonV.set(-HX * 0.9, 0.3 + 0.5 * Math.max(-s, 0), -HZ * 0.9).normalize();
   const day = smoothstep(s, -0.2, 0.3), warm = Math.exp(-((s / 0.22) ** 2));   // warm = 1 at the horizon
-  game.day = day;
+  game.day = day; U.night.value = 1 - day;
   SKY.uSunDir.value.copy(moonV).lerp(sunV, day).normalize();
   const tint = SKY.uSkyTint.value.copy(NIGHT).lerp(WHITE, day).lerp(DUSK, warm * 0.55);
   tint.lerp(tmp.copy(STORM).multiplyScalar(0.25 + 0.75 * day), 0.45 * wx.rain + 0.15 * wx.fog);   // overcast: grey and darker
@@ -210,10 +213,15 @@ export function updateAtmosphere(t, dt, focus, top, tod = 0.08) {
   hemi.color.copy(SKY_N).lerp(SKY_D, day); hemi.groundColor.copy(GND_N).lerp(GND_D, day);
   hemi.intensity = lerp(0.5, 1.1 + 0.08 * lv, day) + wx.flash * 1.5;
   renderer.toneMappingExposure = lerp(1.3, 1.05, day);
-
-  scene.fog.density = U.density.value = lerp(0.0105, 0.0042, smoothstep(alt, 0, 1)) * (1 + 1.4 * wx.fog + 0.6 * wx.rain) * FOGS[settings.fog];
-  sun.target.position.copy(focus);
-  sun.position.copy(focus).addScaledVector(SKY.uSunDir.value, 60);
+  U.density.value = lerp(0.04, 0.03, smoothstep(alt, 0, 1)) * (1 + 0.5 * wx.fog + 0.3 * wx.rain) * FOGS[settings.fog] * (game.mapView ? 0.25 : 1) * (1 - game.restoration * 0.62);
+  scene.fog.density = U.density.value;
+  // move the shadow camera in whole shadow-map texels (in light space) so shadow edges don't crawl as you walk
+  const L = SKY.uSunDir.value, texel = (sun.shadow.camera.right - sun.shadow.camera.left) / sun.shadow.mapSize.x;
+  lr.crossVectors(L, Math.abs(L.y) > 0.99 ? AX : UPV).normalize(); lu.crossVectors(lr, L);
+  const u = Math.round(focus.dot(lr) / texel) * texel, v = Math.round(focus.dot(lu) / texel) * texel;
+  snapped.copy(L).multiplyScalar(focus.dot(L)).addScaledVector(lr, u).addScaledVector(lu, v);
+  sun.target.position.copy(snapped);
+  sun.position.copy(snapped).addScaledVector(L, 60);
   sky.position.copy(camera.position);
   for (const s2 of seas) s2.position.set(camera.position.x, s2.position.y, camera.position.z);
   for (const c of clouds) {

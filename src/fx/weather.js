@@ -3,7 +3,7 @@
 // the audio adds rain noise, and this file draws the rain and triggers lightning + thunder.
 import * as THREE from 'three';
 import { scene, camera, U, game } from '../core.js';
-import { WIND, settings } from '../config.js';
+import { WIND, settings, dev } from '../config.js';
 import { damp, rnd, rand, f4 } from '../utils.js';
 import { thunder } from '../game/audio.js';
 
@@ -65,7 +65,7 @@ export function forceWeather(i) {
 }
 
 export function updateWeather(dt, playing) {
-  if (settings.weather) { target = { fog: 0, rain: 0 }; timer = 45; }   // weather switched off: everything clears up
+  if (settings.weather && !dev.forced) { target = { fog: 0, rain: 0 }; timer = 45; }   // weather switched off: everything clears up
   if (playing) {
     timer -= dt;
     if (timer <= 0) pickPlan();

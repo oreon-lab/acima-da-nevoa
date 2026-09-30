@@ -87,17 +87,17 @@ function stemGeo() {
   return g;
 }
 
-function instanced(geo, list) {
+function instanced(geo, list, parent = scene) {
   const m = new THREE.InstancedMesh(geo, grassMat, list.length);
   list.forEach(([mat, c], i) => { m.setMatrixAt(i, mat); m.setColorAt(i, c); });
   m.receiveShadow = true; m.frustumCulled = false;
-  scene.add(m);
+  parent.add(m);
 }
 
 // call once, after every grassDisc()
-export function buildVegetation() {
-  instanced(bladeGeo(), grassI);
-  instanced(flowerHeadGeo(), flowerI);
+export function buildVegetation(parent = scene, grasses = grassI, flowers = flowerI) {
+  instanced(bladeGeo(), grasses, parent);
+  instanced(flowerHeadGeo(), flowers, parent);
   const green = new THREE.Color('#5f8a3c');
-  instanced(stemGeo(), flowerI.map(([m]) => [m, green]));
+  instanced(stemGeo(), flowers.map(([m]) => [m, green]), parent);
 }

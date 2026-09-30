@@ -5,7 +5,7 @@ import { V3, TAU, rand } from '../utils.js';
 
 // irregular outline: a few sine harmonics around the circle
 export const shapeH = (amp = 1) => [rand(0.05, 0.12) * amp, rand(0, TAU), rand(0.03, 0.08) * amp, rand(0, TAU), rand(0.03, 0.09) * amp, rand(0, TAU)];
-export const shapeAt = (h, a) => h ? 1 + h[0] * Math.sin(3 * a + h[1]) + h[2] * Math.sin(5 * a + h[3]) + h[4] * Math.sin(2 * a + h[5]) : 1;
+export const shapeAt = (h, a) => typeof h === 'function' ? h(a) : h ? 1 + h[0] * Math.sin(3 * a + h[1]) + h[2] * Math.sin(5 * a + h[3]) + h[4] * Math.sin(2 * a + h[5]) : 1;
 
 // Non-indexed geometry with flat per-face colour and a per-vertex wind weight (aSway).
 const tmp = new V3();
@@ -40,18 +40,44 @@ export function jitter(geo, amt) {
 }
 
 // Lathe-like floating rock: profile = [[radiusFactor, y, jitter], ...] from top centre down to the tip.
+// The outline twists as the rock deepens; the mesh, the collision and the tests all read it from here.
+export const rockTwist = (t, R0) => (t > 1 ? (t - 1) / R0 * 0.5 : 0);
+// Keep the layers below the flat top in order, even when a short rock's fixed upper bands would otherwise
+// extend past its depth-based bands. Shared by the mesh and the collision envelope.
+export function rockLevels(prof) {
+  const levels = [];
+  for (const [, y] of prof) levels.push(levels.length && y < 0 ? Math.min(y, levels.at(-1) - 0.04) : y);
+  return levels;
+}
+// Visible outline of a rock mass as [[depth below the top, radiusFactor], ...]: the widest ring of each level.
+// Collision reads it, so the walls taper with the rock instead of standing in for it as a straight prism.
+export function rockEnvelope(prof) {
+  const levels = rockLevels(prof), out = [];
+  for (let k = 0; k < prof.length; k++) {
+    const rf = prof[k][0], t = Math.max(-levels[k], 0);
+    if (!rf && !t) continue;                                    // the top centre carries no radius; the tip ends the taper
+    const last = out.at(-1);
+    if (last && Math.abs(last[0] - t) < 1e-6) { if (rf > last[1]) last[1] = rf; } else out.push([t, rf]);
+  }
+  return out.sort((a, b) => a[0] - b[0]);
+}
+
 export function rockMass(R0, h, prof, segs, colorFn) {
   const pos = [], idx = [], rings = [];
-  for (const [rf, y, j = 0.05] of prof) {
+  const levels = rockLevels(prof);
+  for (let k = 0; k < prof.length; k++) {
+    const [rf, , j = 0.05] = prof[k], y = levels[k];
     const ring = [];
     if (rf === 0) { ring.push(pos.length / 3); pos.push(0, y, 0); }
     else {
-      const low = y < -0.8, aoff = low ? rand(0, 0.5) * TAU / segs : 0, tw = Math.max(0, -y - 1) / R0 * 0.5;
+      const low = y < -0.8, aoff = low ? rand(0, 0.5) * TAU / segs : 0, tw = rockTwist(-y, R0);
+      const gap = low ? Math.min(levels[k - 1] - y, k + 1 < levels.length ? y - levels[k + 1] : Infinity) : 0;
+      const yJitter = low ? Math.min(j * R0 * 0.6, gap * 0.24) : 0.012;
       for (let s = 0; s < segs; s++) {
         const a = s / segs * TAU + aoff;
         const r = R0 * rf * shapeAt(h, a + tw) * (1 + rand(-j, j));
         ring.push(pos.length / 3);
-        pos.push(Math.cos(a) * r, y + (low ? rand(-1, 1) * j * R0 * 0.6 : rand(-0.012, 0.012)), Math.sin(a) * r);
+        pos.push(Math.cos(a) * r, y + rand(-yJitter, yJitter), Math.sin(a) * r);
       }
     }
     rings.push(ring);

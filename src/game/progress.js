@@ -1,0 +1,83 @@
+// Saved progress (localStorage): the current run (checkpoint, fragments, time, ghost recording) and things kept
+// across runs (best time + its ghost, learned abilities, achievements and places found).
+import { toast } from './ui.js';
+import { tone } from './audio.js';
+
+// Isolated saves for local visual QA; never read or write a player's journey while previewing tests.
+const qa = import.meta.env?.DEV && new URLSearchParams(location.search).has('qa');
+const KEY = qa ? 'nevoa-qa-save' : 'nevoa-save', GKEY = qa ? 'nevoa-qa-ghost' : 'nevoa-ghost';
+const RUN = () => ({ cp: 0, got: [], runT: 0, falls: 0, done: false, dirty: false, ruins: false, rec: [] });
+export const save = { ver: '', ...RUN(), glide: false, best: null, records: {}, memories: [], ach: {}, visited: [], detours: [], album: [] };
+export let ghost = null;   // { ver, t, rec } of the best run
+
+export const ACH = [
+  ['summit', 'Acima da névoa', 'Chegar ao farol'],
+  ['shards', 'Colecionador de luz', 'Pegar todos os fragmentos de luz'],
+  ['islands', 'Cartógrafo', 'Pisar em todas as ilhas e em todos os lugares secretos'],
+  ['detours', 'Fora da trilha', 'Chegar ao fim de todos os desvios'],
+  ['glide', 'Asas de vento', 'Planar 25 m de uma só vez'],
+  ['nofall', 'Pés firmes', 'Chegar ao farol sem cair nenhuma vez'],
+  ['fast', 'Mais rápido que a névoa', 'Chegar ao farol em menos de 8 minutos'],
+  ['night', 'Vigília', 'Chegar ao farol durante a noite'],
+  ['photo', 'Olhar atento', 'Tirar uma foto no modo foto'],
+  ['ruins', 'Luz entre as ruínas', 'Alinhar os três espelhos do vento'],
+  ['album', 'Memórias da névoa', 'Fotografar todos os marcos do álbum'],
+  ['whale', 'Carona nas brumas', 'Embarcar na ilha-baleia'],
+];
+
+// ver identifies the generated world; a run saved for a different world is dropped (kept stuff survives)
+export function loadSave(ver, nIslands, nPickups, addedPickupIndex = -1, compatibleVersions = []) {
+  save.ver = ver;
+  const parts = ver.split('.');
+  const legacyVer = addedPickupIndex >= 0 && parts.length === 4 ? `${parts[0]}.${parts[1]}.${nPickups - 1}.${parts[3]}` : null;
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && typeof s === 'object') {
+      const arr = v => (Array.isArray(v) ? v : []);
+      save.glide = s.glide === true;
+      save.records = s.records && typeof s.records === 'object' ? { ...s.records } : {};
+      if (Number.isFinite(s.best) && s.ver) save.records[s.ver] = s.best;
+      // Times belong to a route; changing the course keeps the old record without comparing unlike runs.
+      const compatible = compatibleVersions.includes(s.ver);
+      save.best = Number.isFinite(save.records[ver]) ? save.records[ver] : ((s.ver === legacyVer || compatible) && Number.isFinite(s.best) ? s.best : null);
+      save.memories = arr(s.memories).filter(v => ['spark', 'wind', 'home'].includes(v));
+      save.ach = s.ach && typeof s.ach === 'object' ? { ...s.ach } : {};
+      delete save.ach.rift;
+      delete save.ach.lore;
+      save.visited = arr(s.visited); save.detours = arr(s.detours); save.album = arr(s.album).filter(v => typeof v === 'string');
+      if (s.ver === ver || s.ver === legacyVer || compatible) {
+        save.cp = Number.isInteger(s.cp) && s.cp >= 0 && s.cp < nIslands ? s.cp : 0;
+        save.got = arr(s.got).filter(i => Number.isInteger(i) && i >= 0 && i < (s.ver === legacyVer ? nPickups - 1 : nPickups))
+          .map(i => s.ver === legacyVer && i >= addedPickupIndex ? i + 1 : i);
+        save.runT = Number.isFinite(s.runT) && s.runT > 0 ? s.runT : 0;
+        save.falls = Number.isInteger(s.falls) ? s.falls : 0;
+        save.done = s.done === true; save.dirty = s.dirty === true; save.ruins = s.ruins === true;
+        save.rec = arr(s.rec).filter(f => Array.isArray(f) && f.length === 4 && f.every(Number.isFinite));
+      }
+    }
+    const g = JSON.parse(localStorage.getItem(GKEY));
+    if ((g?.ver === ver || g?.ver === legacyVer || compatibleVersions.includes(g?.ver)) && Number.isFinite(g.t) && Array.isArray(g.rec)) ghost = { ...g, ver };
+  } catch { /* no save or storage blocked */ }
+}
+export function persist() { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch { /* full or blocked */ } }
+export function saveGhost(rec, t) {
+  ghost = { ver: save.ver, t, rec };
+  try { localStorage.setItem(GKEY, JSON.stringify(ghost)); } catch { /* ignore */ }
+}
+export function newRun() { Object.assign(save, RUN()); persist(); }
+
+// add v to one of the kept lists; true if it was new
+export function mark(list, v) {
+  if (save[list].includes(v)) return false;
+  save[list].push(v); persist();
+  return true;
+}
+export function unlock(id) {
+  if (save.ach[id]) return;
+  save.ach[id] = Date.now(); persist();
+  const a = ACH.find(x => x[0] === id);
+  toast(a[1], a[2]);
+  tone([523.25, 659.25, 783.99, 1046.5], { dur: 1.6, vol: 0.045, gap: 0.08 });
+}
+export const achCount = () => ACH.filter(a => save.ach[a[0]]).length;
+export const fmtTime = t => { const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`; };

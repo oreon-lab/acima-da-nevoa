@@ -4,90 +4,347 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Acima da Névoa</title>
+<meta name="description" content="Plataforma 3D atmosférico: suba entre ilhas flutuantes acima da névoa.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1l5 7-5 7-5-7z' fill='%23ffd58a'/%3E%3C/svg%3E">
 <style>
-  :root { --ink: #f7f2e8; --gold: #ffe2a0; }
+  /* ================================================================ identity
+     A lantern in the mist: deep teal-black night, warm lantern gold, pale mist ink.
+     One motif carries everything: the diamond (marker, bullet, gem, emblem, toggle) and thin hairlines. */
+  :root {
+    --ink: #f4efe3; --dim: rgba(244, 239, 227, .66); --faint: rgba(244, 239, 227, .38);
+    --gold: #ffd58a; --gold-glow: rgba(255, 213, 138, .55); --coral: #ff9f8f; --spirit: #bceeff;
+    --night: 8, 18, 28;
+    --ease: cubic-bezier(.2, .8, .2, 1);
+    --shadow: 0 1px 2px rgba(6, 14, 22, .7), 0 0 22px rgba(6, 14, 22, .35);
+  }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #b8c4c6; user-select: none; }
   canvas { display: block; }
   .hud { position: fixed; pointer-events: none; color: var(--ink); font-family: Poppins, sans-serif; font-weight: 300;
-         text-shadow: 0 1px 2px rgba(18, 26, 34, .55), 0 0 22px rgba(18, 26, 34, .28); transition: opacity 1s; }
+         text-shadow: var(--shadow); transition: opacity 1s; }
+  /* a soft cinematic vignette keeps the corners readable without boxing the HUD in */
+  body::before { content: ''; position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.2s;
+                 background: linear-gradient(rgba(var(--night), .5), transparent 24%), linear-gradient(transparent 76%, rgba(var(--night), .5)),
+                             radial-gradient(ellipse at 50% 46%, transparent 60%, rgba(var(--night), .3) 100%); }
+  body.playing::before { opacity: 1; }
+  .ic { width: 1em; height: 1em; fill: currentColor; stroke: none; vertical-align: -.12em; overflow: visible; }
 
-  /* ---- in-game HUD: only exists while playing; a counter, the current checkpoint and a height gauge, no boxes */
+  /* ---- keycaps and pad glyphs: every prompt in the game uses the same little keys */
+  kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; margin: 0 3px;
+        font: 500 10.5px/1 Poppins, sans-serif; letter-spacing: .04em; color: var(--ink); text-shadow: none; vertical-align: middle;
+        background: rgba(var(--night), .55); border: 1px solid rgba(244, 239, 227, .5); border-bottom-width: 2px; border-radius: 3px; }
+  kbd.pad { border-radius: 50%; min-width: 20px; padding: 0; border-width: 1.5px; }
+  kbd.pad.a { color: #9fdcaa; border-color: #9fdcaa; } kbd.pad.b { color: #ff9f8f; border-color: #ff9f8f; }
+  kbd.pad.x { color: #9dbdff; border-color: #9dbdff; } kbd.pad.y { color: var(--gold); border-color: var(--gold); }
+  kbd.pad.sys { border-radius: 4px; padding: 0 6px; color: var(--ink); border-color: rgba(244, 239, 227, .5); }
+  .rule { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--gold); font-size: 8px; }
+  .rule i { flex: none; width: min(120px, 22vw); height: 1px; background: linear-gradient(90deg, transparent, rgba(255, 226, 170, .75)); }
+  .rule i:last-child { transform: scaleX(-1); }
+
+  /* ================================================================ in-game HUD
+     Only what you need, in the corners: light collected + checkpoint (bottom left), objective (top left),
+     time + combat (top right), height (right edge). No boxes. */
   #count, #alt { opacity: 0; }
   .nohud #count, .nohud #alt { display: none; }
-  .playing #count { opacity: .8; }
+  .playing #count { opacity: .88; }
   .playing #count.show { opacity: 1; }
-  .playing #alt { opacity: .75; }
+  .playing #alt { opacity: .8; }
 
-  #count { left: 36px; bottom: 30px; font-size: 16px; font-weight: 500; letter-spacing: .03em; }
-  #count .gem { color: var(--gold); margin-right: .6em; text-shadow: 0 0 12px rgba(255, 214, 140, .95); }
-  #count .tot { opacity: .5; font-weight: 300; }
-  #count .cpl { margin-top: 6px; font-size: 12px; font-weight: 400; letter-spacing: .02em; opacity: .65; }
-  #fps { left: 36px; top: 26px; font-size: 12px; font-weight: 500; letter-spacing: .04em; opacity: .7; }
-  #count.pulse .n { animation: pulse .5s ease-out; display: inline-block; }
-  @keyframes pulse { 0% { transform: scale(1.45); } 100% { transform: scale(1); } }
+  #count { left: 34px; bottom: 30px; }
+  #count .c-row { display: flex; align-items: center; gap: 14px; }
+  #count .gem { display: grid; place-items: center; width: 26px; height: 26px; margin: 4px; color: var(--gold); font-size: 15px;
+                border: 1px solid rgba(255, 213, 138, .5); transform: rotate(45deg); box-shadow: 0 0 18px rgba(255, 213, 138, .25), inset 0 0 12px rgba(255, 213, 138, .18);
+                background: rgba(var(--night), .35); }
+  #count .gem .ic { transform: rotate(-45deg); filter: drop-shadow(0 0 6px var(--gold-glow)); }
+  #count .n { font-size: 28px; font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; }
+  #count .tot { font-size: 14px; opacity: .55; font-weight: 400; margin-left: -8px; align-self: flex-end; padding-bottom: 3px; }
+  #count .cpl { margin: 9px 0 0 46px; font-size: 10px; font-weight: 500; letter-spacing: .22em; text-transform: uppercase; color: var(--dim); }
+  #count.pulse .gem { animation: gemPulse .7s var(--ease); }
+  #count.pulse .n { animation: pulse .5s var(--ease); display: inline-block; }
+  @keyframes pulse { 0% { transform: scale(1.4); color: var(--gold); } 100% { transform: scale(1); } }
+  @keyframes gemPulse { 0% { box-shadow: 0 0 34px rgba(255, 213, 138, .9), inset 0 0 18px rgba(255, 213, 138, .6); } }
 
-  #alt { right: 34px; top: 50%; height: 36vh; width: 70px; transform: translateY(-50%); }
-  #alt .line { position: absolute; right: 9px; top: 0; bottom: 0; width: 1px; background: linear-gradient(to top, rgba(255, 248, 235, .6), rgba(255, 248, 235, .12)); }
-  #alt .line i { position: absolute; right: -2px; width: 5px; height: 5px; transform: translateY(50%) rotate(45deg); background: rgba(255, 248, 235, .35); transition: background .6s, box-shadow .6s; }
-  #alt .line i.on { background: var(--gold); box-shadow: 0 0 8px rgba(255, 214, 140, .85); }
+  #fps { left: 34px; top: 104px; font-size: 11px; font-weight: 500; letter-spacing: .1em; opacity: .6; font-variant-numeric: tabular-nums; }
+  #timer { right: 36px; top: 24px; font-size: 14px; font-weight: 400; letter-spacing: .12em; opacity: 0; font-variant-numeric: tabular-nums; }
+  .playing #timer { opacity: .8; }
+  .notimer #timer, .nohud #timer { display: none; }
+
+  /* combat: hearts, one line of state, and a thin bar that drains through the sword swing */
+  #combat { right: 36px; top: 54px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; opacity: 0; --recovery: 0; }
+  .playing #combat { opacity: .95; }
+  #combat .hp { display: flex; gap: 5px; font-size: 17px; line-height: 1; }
+  #combat .hp i { font-style: normal; color: rgba(244, 239, 227, .26); transition: color .25s, filter .25s; }
+  #combat .hp i.on { color: var(--coral); filter: drop-shadow(0 0 6px rgba(255, 159, 143, .55)); }
+  #combat .st { font-size: 10px; font-weight: 500; letter-spacing: .2em; text-transform: uppercase; color: var(--dim); }
+  #combat .kills { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  #combat .keys { font-size: 11px; color: var(--dim); }
+  #combat::after { content: ''; display: block; width: 120px; height: 2px; background: linear-gradient(90deg, transparent, var(--spirit)); transform-origin: right; transform: scaleX(var(--recovery)); }
+  #combat.hurt .hp i.on { animation: hurt .35s ease-out; } #combat.hurt .st { color: var(--coral); }
+  @keyframes hurt { 50% { transform: scale(1.35); } }
+  .nohud #combat, .photo #combat, .ending #combat { display: none; }
+  @media (max-width: 600px) { #combat { right: 18px; top: 120px; } }
+
+  /* height gauge: a hairline with a diamond per island (lit once reached) and a marker for you */
+  #alt { right: 30px; top: 50%; height: 36vh; width: 76px; transform: translateY(-50%); }
+  #alt .line { position: absolute; right: 9px; top: 0; bottom: 0; width: 1px; background: linear-gradient(to top, rgba(255, 248, 235, .6), rgba(255, 248, 235, .1)); }
+  #alt .line i { position: absolute; right: -2.5px; width: 6px; height: 6px; box-sizing: border-box; transform: translateY(50%) rotate(45deg);
+                 background: rgba(var(--night), .7); border: 1px solid rgba(255, 248, 235, .5); transition: background .6s, box-shadow .6s, border-color .6s; }
+  #alt .line i.on { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 8px rgba(255, 214, 140, .85); }
   #alt .me { position: absolute; right: 5px; display: flex; align-items: center; gap: 12px; transform: translateY(50%); transition: bottom .25s linear; }
-  #alt .me b { width: 9px; height: 9px; transform: rotate(45deg); background: var(--gold); box-shadow: 0 0 12px rgba(255, 214, 140, .95); }
-  #alt .me .m { font-size: 12px; font-weight: 500; letter-spacing: .03em; }
+  #alt .me b { width: 10px; height: 10px; transform: rotate(45deg); background: var(--gold); box-shadow: 0 0 14px rgba(255, 214, 140, 1); }
+  #alt .me .m { font-size: 12px; font-weight: 500; letter-spacing: .06em; font-variant-numeric: tabular-nums; }
 
-  /* ---- area title, messages */
-  #area { left: 0; right: 0; top: 19%; text-align: center; opacity: 0; transition: opacity 1.6s; }
+  /* objective: a gold rule and two lines, nothing else */
+  #objective { left: 34px; top: 22px; width: min(400px, calc(100vw - 200px)); box-sizing: border-box; padding: 2px 0 2px 14px; opacity: 0; line-height: 1.5;
+               border-left: 1px solid rgba(255, 213, 138, .55); }
+  .playing #objective { opacity: 1; }
+  #objective .o-title { font-size: 10px; font-weight: 500; letter-spacing: .2em; text-transform: uppercase; color: var(--gold); }
+  #objective .o-next { margin-top: 3px; font-size: 15px; font-weight: 400; letter-spacing: .01em; }
+  #objective .o-meta { display: flex; gap: 14px; margin-top: 4px; font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  #objective .o-step { color: var(--gold); font-weight: 500; letter-spacing: .1em; }
+
+  /* guide: contextual tip, a short line of text over a soft gradient */
+  #guide { left: 50%; bottom: 13%; transform: translateX(-50%) translateY(6px); width: min(560px, 82vw); box-sizing: border-box; padding: 14px 26px 15px;
+           text-align: center; opacity: 0; transition: opacity .4s, transform .5s var(--ease);
+           background: linear-gradient(90deg, transparent, rgba(var(--night), .6) 18%, rgba(var(--night), .6) 82%, transparent); }
+  #guide.show { opacity: 1; transform: translateX(-50%); }
+  #guide .g-title { font-size: 10px; font-weight: 500; letter-spacing: .22em; text-transform: uppercase; color: var(--gold); margin-bottom: 7px; }
+  #guide .g-title::before, #guide .g-title::after { content: '◆'; font-size: 6px; margin: 0 10px; vertical-align: 2px; opacity: .8; }
+  #guide .g-text { font-size: 13px; line-height: 1.7; font-weight: 400; }
+
+  /* ---- area title, messages, prompts */
+  #area { left: 0; right: 0; top: 18%; text-align: center; opacity: 0; transition: opacity 1.6s; }
   #area.show { opacity: 1; }
-  #area .num { font-size: 13px; font-weight: 400; letter-spacing: .2em; opacity: .75; padding-left: .2em; }
-  #area .name { font-size: clamp(26px, 3.4vw, 38px); font-weight: 300; letter-spacing: .03em; margin: .3em 0 0; }
-  #area .line { width: 140px; height: 1px; margin: 14px auto; background: linear-gradient(90deg, transparent, rgba(255, 248, 235, .85), transparent); }
-  #area .sub { font-size: 13px; font-weight: 400; letter-spacing: .05em; opacity: .8; }
-
+  #area .num { font-size: 12px; font-weight: 500; letter-spacing: .5em; padding-left: .5em; color: var(--gold); }
+  #area .name { font-size: clamp(30px, 4.2vw, 54px); font-weight: 200; letter-spacing: .05em; margin: .25em 0 0; text-shadow: var(--shadow), 0 0 40px rgba(255, 213, 138, .18); }
+  #area .line { width: 180px; height: 1px; margin: 16px auto 12px; background: linear-gradient(90deg, transparent, rgba(255, 226, 170, .9), transparent); position: relative; }
+  #area .line::after { content: ''; position: absolute; left: 50%; top: -3px; width: 6px; height: 6px; margin-left: -3px; transform: rotate(45deg); background: var(--gold); box-shadow: 0 0 10px var(--gold-glow); }
+  #area .sub { font-size: 11px; font-weight: 500; letter-spacing: .3em; text-transform: uppercase; color: var(--dim); }
   #msg { left: 0; right: 0; bottom: 11%; text-align: center; font-size: 14px; letter-spacing: .03em; opacity: 0; line-height: 2.2; }
-  #msg.show { opacity: .9; }
+  #msg.show { opacity: .92; }
   #msg b { font-weight: 300; font-size: 24px; letter-spacing: .04em; }
+  #interact { left: 50%; bottom: 7%; transform: translateX(-50%) translateY(8px); font-size: 12px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase;
+              opacity: 0; white-space: nowrap; transition: opacity .3s, transform .4s var(--ease); }
+  #interact.show { opacity: 1; transform: translateX(-50%); }
+  #interact kbd { margin: 0 10px 0 0; height: 24px; min-width: 24px; font-size: 12px; }
 
-  #loading { left: 0; right: 0; bottom: 8%; text-align: center; font-size: 14px; letter-spacing: .04em; opacity: .8; }
+  #toast { right: 36px; bottom: 30px; display: grid; grid-template-columns: auto 1fr; column-gap: 14px; align-items: center; width: max-content;
+           max-width: min(400px, calc(100vw - 72px)); padding: 12px 18px 12px 14px; opacity: 0; transform: translateX(16px);
+           transition: opacity .5s, transform .6s var(--ease);
+           background: linear-gradient(270deg, rgba(var(--night), .7), rgba(var(--night), .35) 80%, transparent); border-right: 1px solid rgba(255, 213, 138, .6); }
+  #toast::before { content: '◆'; grid-row: 1 / 4; display: grid; place-items: center; width: 34px; height: 34px; color: var(--gold); font-size: 14px;
+                   border: 1px solid rgba(255, 213, 138, .55); transform: scale(.72) rotate(45deg); box-shadow: 0 0 16px rgba(255, 213, 138, .3); }
+  #toast.show { opacity: 1; transform: none; }
+  #toast .t0 { font-size: 10px; font-weight: 500; letter-spacing: .24em; color: var(--gold); }
+  #toast .t1 { font-size: 16px; font-weight: 400; margin-top: 2px; }
+  #toast .t2 { font-size: 12px; color: var(--dim); margin-top: 2px; line-height: 1.55; }
 
-  /* ---- title screen */
-  #title { inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; }
+  #loading { left: 0; right: 0; bottom: 8%; text-align: center; font-size: 11px; font-weight: 500; letter-spacing: .3em; text-transform: uppercase; opacity: .8; }
+  #loading::before { content: ''; display: block; width: 7px; height: 7px; margin: 0 auto 14px; transform: rotate(45deg); background: var(--gold); animation: lantern 1.6s ease-in-out infinite; }
+  @keyframes lantern { 0%, 100% { opacity: .35; box-shadow: 0 0 6px var(--gold-glow); } 50% { opacity: 1; box-shadow: 0 0 20px var(--gold); } }
+
+  #ending-caption { left: 0; right: 0; bottom: 14%; text-align: center; opacity: 0; }
+  #ending-caption b { display: block; font-size: clamp(28px, 4.6vw, 52px); font-weight: 200; letter-spacing: .04em; }
+  #ending-caption .rule { margin: 20px 0 16px; }
+  #ending-caption span { display: block; font-size: 14px; color: var(--dim); }
+  #ending-caption small { display: block; margin-top: 34px; color: var(--faint); font-size: 11px; letter-spacing: .12em; }
+  .ending .hud { opacity: 0 !important; }
+  .ending #ending-caption { opacity: 1 !important; }
+  .nohud #objective, .nohud #guide { display: none; }
+  .mapview #objective, .mapview #guide, .paused #objective, .paused #guide { opacity: 0 !important; }
+  .paused #combat, .paused #timer { opacity: 0; }
+  .mapview #area, .mapview #msg, .mapview #count, .mapview #alt { opacity: 0 !important; }
+  @media (max-width: 680px) {
+    #objective { left: 20px; top: 20px; width: calc(100vw - 130px); }
+    #objective .o-next { font-size: 12px; } #objective .o-meta { font-size: 10px; }
+    #guide { bottom: 16%; padding: 12px 16px; width: 88vw; } #guide .g-text { font-size: 12px; }
+    #count { left: 20px; bottom: 22px; } #toast { right: 18px; bottom: 22px; }
+  }
+
+  /* ================================================================ title screen */
+  #title { inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; text-align: center;
+           background: radial-gradient(ellipse at 50% 44%, rgba(var(--night), .5) 0%, rgba(var(--night), .72) 100%); }
   #title.show { opacity: 1; }
-  #title .t-main { font-size: clamp(36px, 6vw, 72px); font-weight: 300; letter-spacing: .04em; margin-top: -18vh; }
-  #title .t-sub { font-size: 15px; font-weight: 300; letter-spacing: .06em; opacity: .85; margin-top: 16px; }
-  #title .t-start { position: absolute; bottom: 14%; font-size: 15px; font-weight: 400; letter-spacing: .05em; animation: blink 2.4s ease-in-out infinite; }
-  @keyframes blink { 50% { opacity: .25; } }
+  #title .t-emblem { width: 46px; height: 46px; color: var(--gold); margin-bottom: 22px; filter: drop-shadow(0 0 14px var(--gold-glow)); animation: float 6s ease-in-out infinite; }
+  @keyframes float { 50% { transform: translateY(-6px); } }
+  #title .t-kicker { font-size: clamp(12px, 1.4vw, 16px); font-weight: 500; letter-spacing: .7em; padding-left: .7em; text-transform: uppercase; color: var(--gold); }
+  #title .t-main { font-size: clamp(64px, 12vw, 152px); font-weight: 200; letter-spacing: .04em; line-height: 1.05; margin: 6px 0 4px;
+                   text-shadow: 0 2px 4px rgba(6, 14, 22, .4), 0 0 60px rgba(255, 226, 170, .3); }
+  #title .rule { margin: 12px 0 18px; }
+  #title .t-sub { font-size: clamp(11px, 1.2vw, 14px); font-weight: 400; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+  #title .t-start { position: relative; margin-top: 7vh; padding: 14px 44px 14px calc(44px + .38em); font-size: 13px; font-weight: 500; letter-spacing: .38em; text-transform: uppercase;
+                    color: var(--ink); animation: breathe 2.8s ease-in-out infinite; }
+  /* corner brackets instead of a rounded button */
+  #title .t-start::before, #title .t-start::after { content: ''; position: absolute; width: 12px; height: 12px; border: 1px solid var(--gold); }
+  #title .t-start::before { left: 0; top: 0; border-right: 0; border-bottom: 0; } #title .t-start::after { right: 0; bottom: 0; border-left: 0; border-top: 0; }
+  @keyframes breathe { 50% { opacity: .45; } }
+  #title .t-keys { position: absolute; bottom: 5vh; font-size: 11px; color: var(--dim); letter-spacing: .06em; }
+  #title .t-keys span { margin: 0 14px; }
 
-  /* ---- pause / settings menu */
-  #pause { inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0;
-           background: radial-gradient(ellipse at center, rgba(14, 20, 28, .15) 0%, rgba(10, 14, 20, .6) 100%);
-           /* hidden = really hidden, so the blur isn't recomputed over the live canvas while playing */
-           backdrop-filter: blur(3px); visibility: hidden; transition: opacity .35s, visibility 0s .35s; }
-  #pause.show { opacity: 1; pointer-events: auto; visibility: visible; transition: opacity .35s; }
-  #pause .p-title { font-size: 22px; font-weight: 300; letter-spacing: .04em; opacity: .9; margin-bottom: 26px; }
-  #menu { list-style: none; margin: 0; padding: 0; text-align: center; }
-  #menu li { font-size: 18px; font-weight: 300; letter-spacing: .02em; padding: 6px 0; opacity: .42; cursor: pointer; transition: opacity .2s; position: relative; }
-  #menu li.sel { opacity: 1; font-weight: 400; }
-  #menu li.sel::before { content: '◆'; font-size: 9px; position: absolute; margin-left: -28px; top: 50%; transform: translateY(-50%); color: var(--gold); text-shadow: 0 0 10px rgba(255, 214, 140, .9); }
-  #menu .val { font-size: 16px; font-weight: 400; letter-spacing: .02em; margin-left: 22px; opacity: .9; }
-  #menu.cols li { display: flex; justify-content: space-between; align-items: baseline; width: min(460px, 80vw); margin: 0 auto; padding: 6px 12px; text-align: left; }
-  #menu.cols li::before { margin-left: 0 !important; left: -14px; }
-  #menu.cols .val { min-width: 130px; text-align: right; margin-left: 12px; }
-  #menu .val i { font-style: normal; padding: 0 8px; opacity: .6; }
-  #pause .p-foot { position: absolute; bottom: 8%; font-size: 14px; letter-spacing: .03em; opacity: .65; text-align: center; max-width: 70vw; }
+  /* ================================================================ menus (pause, settings, map, album...)
+     No panel: a curtain of night falls from the left, with a gold rail running down the menu. */
+  #pause { inset: 0; display: flex; align-items: center; justify-content: flex-start; padding: 5vh 7vw; box-sizing: border-box;
+           opacity: 0; visibility: hidden; pointer-events: none;
+           background: linear-gradient(90deg, rgba(var(--night), .9) 0, rgba(var(--night), .68) 32%, rgba(var(--night), .22) 62%, rgba(var(--night), .08) 100%);
+           text-shadow: 0 2px 13px rgba(2, 10, 18, .7); transition: opacity .35s ease, visibility 0s .35s; }
+  #pause.show { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity .35s ease; }
+  #pause .menu-panel { position: relative; width: min(520px, 84vw); max-height: 90dvh; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }
+  #pause.show .menu-panel { animation: panelIn .6s var(--ease) backwards; }
+  @keyframes panelIn { from { opacity: 0; transform: translateX(-22px); } }
+  #pause .menu-panel::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; width: 1px;
+                               background: linear-gradient(transparent, rgba(255, 213, 138, .7) 14%, rgba(255, 213, 138, .22) 86%, transparent); }
+  #pause .p-header { padding: 4px 0 22px 34px; }
+  #pause .p-meta { display: flex; justify-content: space-between; align-items: center; gap: 16px; min-height: 16px;
+                   font-size: 10px; font-weight: 500; letter-spacing: .28em; color: var(--gold); text-transform: uppercase; }
+  #pause .p-kicker::before { content: ''; display: inline-block; width: 7px; height: 7px; margin: 0 12px 1px -30px; transform: rotate(45deg); background: var(--gold); box-shadow: 0 0 10px var(--gold-glow); }
+  #pause .p-count { color: var(--faint); letter-spacing: .12em; font-variant-numeric: tabular-nums; }
+  #pause .p-title { margin: 12px 0 0; font-size: clamp(32px, 4vw, 46px); font-weight: 200; line-height: 1.15; letter-spacing: .02em; }
+  #pause .p-info { margin-top: 10px; color: var(--dim); font-size: 13px; line-height: 1.7; font-weight: 400; }
+  #pause .p-info:empty { display: none; }
+  #pause .p-body { min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  #menu { list-style: none; min-height: 0; overflow-y: auto; margin: 0; padding: 0 6px 0 0; scrollbar-width: thin; scrollbar-color: rgba(255, 213, 138, .35) transparent; }
+  #menu li { box-sizing: border-box; position: relative; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+             min-height: 46px; padding: 8px 22px 8px 34px; color: var(--dim); font-size: 17px; font-weight: 300; letter-spacing: .015em; line-height: 1.35; cursor: pointer;
+             transition: color .18s, background .25s, padding .25s var(--ease), letter-spacing .25s var(--ease);
+             animation: rise .5s var(--ease) backwards; animation-delay: calc(var(--i, 0) * 30ms + 90ms); }
+  @keyframes rise { from { opacity: 0; transform: translateX(-14px); } }
+  #menu li::before { content: ''; position: absolute; left: 4px; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; box-sizing: border-box; transform: rotate(45deg) scale(0);
+                     background: var(--gold); box-shadow: 0 0 12px var(--gold), 0 0 4px var(--gold); transition: transform .28s var(--ease); }
+  #menu li.sel, #menu li:hover { color: var(--gold); background: linear-gradient(90deg, rgba(255, 213, 138, .17), rgba(255, 213, 138, .04) 70%, transparent); }
+  #menu li.sel { font-weight: 400; padding-left: 40px; letter-spacing: .03em; }
+  #menu li.sel::before { transform: rotate(45deg) scale(1); }
+  #menu li:active { background: linear-gradient(90deg, rgba(255, 213, 138, .3), rgba(255, 213, 138, .06) 70%, transparent); }
+  #menu li.branch::after { content: '›'; position: absolute; right: 20px; color: var(--faint); font-size: 22px; line-height: 1; transition: transform .25s var(--ease), color .2s; }
+  #menu li.branch.sel::after { color: var(--gold); transform: translateX(4px); }
+  #menu li.primary { color: var(--ink); font-weight: 500; }
+  #menu li.primary.sel, #menu li.primary:hover { color: var(--gold); }
+  #menu li.back { margin-top: 10px; color: var(--faint); font-size: 14px; letter-spacing: .12em; text-transform: uppercase; }
+  #menu li.back::after { content: ''; position: absolute; left: 34px; right: 22px; top: -6px; height: 1px; background: linear-gradient(90deg, rgba(244, 239, 227, .18), transparent); }
+  #menu li.back.sel { color: var(--ink); }
+  #menu li.danger { color: #f4b4a4; } #menu li.danger.sel { color: var(--coral); background: linear-gradient(90deg, rgba(255, 159, 143, .18), transparent 80%); }
+  #menu li.danger.sel::before { background: var(--coral); box-shadow: 0 0 12px var(--coral); }
+  #menu li.muted { color: var(--faint); }
+  #menu .val { flex: none; display: flex; align-items: center; gap: 4px; max-width: 58%; margin-left: auto; color: var(--ink); font-size: 14px; font-weight: 400; text-align: right; font-variant-numeric: tabular-nums; }
+  #menu .val b { font-weight: 400; min-width: 2ch; }
+  #menu li.sel .val b { color: var(--gold); }
+  #menu .val i { display: inline-grid; place-items: center; width: 26px; height: 28px; color: var(--faint); font-size: 20px; font-style: normal; line-height: 1; transition: color .15s, transform .15s var(--ease); }
+  #menu li.sel .val i { color: var(--ink); } #menu .val i:hover { color: var(--gold); transform: scale(1.25); } #menu .val i:active { transform: scale(.9); }
+  /* value widgets: a row of pips for numbers, a diamond switch for on/off */
+  .pips { display: flex; gap: 3px; margin: 0 6px; }
+  .pips u { width: 5px; height: 13px; background: rgba(244, 239, 227, .2); transform: skewX(-14deg); transition: background .2s, box-shadow .2s; }
+  .pips u.on { background: rgba(244, 239, 227, .8); } li.sel .pips u.on { background: var(--gold); box-shadow: 0 0 8px rgba(255, 213, 138, .55); }
+  .tog { position: relative; width: 38px; height: 18px; box-sizing: border-box; border: 1px solid rgba(244, 239, 227, .4); transition: border-color .25s, background .25s; }
+  .tog::after { content: ''; position: absolute; left: 3px; top: 3px; width: 10px; height: 10px; box-sizing: border-box; transform: rotate(45deg) scale(.72); background: var(--faint); transition: left .28s var(--ease), background .25s, box-shadow .25s; }
+  .tog.on { border-color: rgba(255, 213, 138, .7); background: rgba(255, 213, 138, .14); }
+  .tog.on::after { left: 21px; background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+  #pause .p-bottom { padding: 18px 0 0 34px; }
+  #pause .p-foot { min-height: 20px; color: var(--dim); font-size: 12.5px; line-height: 1.65; font-weight: 400; font-style: italic; }
+  #pause .p-nav { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(244, 239, 227, .12);
+                  color: var(--faint); font-size: 9.5px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; }
+  #pause .p-nav span { display: inline-flex; align-items: center; gap: 2px; }
+  #pause .p-nav kbd { margin: 0 2px; }
+  #pause .p-nav kbd:last-of-type { margin-right: 8px; }
+
+  /* map: the live world with a small menu at the bottom */
+  #map { display: none; position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
+  #pause.map { align-items: flex-end; background: linear-gradient(transparent 40%, rgba(var(--night), .78)); cursor: grab; padding: 0 6vw 5vh; }
+  #pause.map #map { display: block; }
+  #pause.map .menu-panel { width: min(560px, 88vw); max-height: 44vh; cursor: default; }
+  #pause.map .p-header { padding: 0 0 8px 34px; } #pause.map .p-title { font-size: 28px; margin-top: 4px; }
+  #pause.map #menu { overflow: visible; padding: 0; }
+  #pause.map #menu li { min-height: 38px; font-size: 16px; }
+  #pause.map .p-bottom { padding: 8px 0 0 34px; } #pause.map .p-nav { display: none; }
+
+  /* album: a framed photo with gold corners beside the list */
+  #pause.album { justify-content: center; background: rgba(var(--night), .78); }
+  #pause.album .menu-panel { width: min(940px, 88vw); }
+  #pause.album .p-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 36px; padding-left: 34px; }
+  body:has(#pause.album) #count { opacity: 0 !important; }
+  #album-preview { display: none; min-height: 270px; max-height: 440px; position: relative; overflow: hidden; border: 1px solid rgba(244, 239, 227, .28); box-shadow: 0 10px 40px rgba(0, 0, 0, .35); }
+  #album-preview::before, #album-preview::after { content: ''; position: absolute; z-index: 2; width: 16px; height: 16px; border: 1px solid var(--gold); pointer-events: none; }
+  #album-preview::before { left: 8px; top: 8px; border-right: 0; border-bottom: 0; } #album-preview::after { right: 8px; bottom: 8px; border-left: 0; border-top: 0; }
+  #album-preview.empty { border-style: dashed; border-color: rgba(244, 239, 227, .18); box-shadow: none; }
+  #pause.album #album-preview { display: flex; align-items: center; justify-content: center; }
+  #album-preview.empty::before { content: '◇'; position: static; border: 0; width: auto; height: auto; color: rgba(255, 226, 160, .55); font-size: 60px; font-weight: 200; }
+  #album-preview.empty::after { display: none; }
+  #album-preview img { width: 100%; height: 100%; object-fit: cover; animation: fadeIn .5s ease; }
+  @keyframes fadeIn { from { opacity: 0; } }
+  #album-preview span { position: absolute; left: 0; right: 0; bottom: 0; padding: 30px 18px 16px; text-align: center; font-size: 11px; font-weight: 500; letter-spacing: .18em; text-transform: uppercase; line-height: 1.6; }
+  #album-preview:not(.empty) span { background: linear-gradient(transparent, rgba(var(--night), .85)); }
+  @media (max-width: 680px) {
+    #pause { padding: 20px 5vw; background: rgba(var(--night), .78); }
+    #pause .menu-panel { width: 90vw; max-height: calc(100dvh - 40px); }
+    #pause .p-header { padding-bottom: 14px; } #pause .p-bottom { padding-top: 12px; }
+    #menu li { min-height: 42px; padding: 7px 18px 7px 30px; font-size: 15px; } #menu li.sel { padding-left: 34px; }
+    #menu .val { font-size: 12px; } .pips u { height: 11px; }
+    #pause.album .menu-panel { width: 90vw; } #pause.album .p-body { display: flex; }
+    #album-preview { min-height: 140px; max-height: 22vh; }
+    #pause.map { padding: 0 5vw 4vh; } #pause.map #menu li { font-size: 14px; }
+    #title .t-keys { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation-duration: .01s !important; animation-delay: 0s !important; } }
+
+  /* ---- dash: speed streaks rushing past the edges of the screen */
+  #dashfx { position: fixed; inset: 0; pointer-events: none; opacity: 0; transform: scale(1.15);
+            background: repeating-conic-gradient(from 0deg at 50% 50%, transparent 0 5deg, rgba(255, 255, 255, .35) 5.4deg 5.7deg, transparent 6.3deg 11deg);
+            -webkit-mask: radial-gradient(ellipse at center, transparent 62%, #000 100%); mask: radial-gradient(ellipse at center, transparent 62%, #000 100%);
+            transition: opacity .45s ease-out, transform .45s ease-out; }
+  #dashfx.on { opacity: .22; transform: scale(1); transition: opacity .04s, transform .2s ease-out; }
+
+  /* ---- photo mode: every HUD element goes away except a small hint */
+  #photohint { left: 0; right: 0; bottom: 22px; text-align: center; font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; opacity: 0; }
+  .photo .hud { opacity: 0 !important; }
+  .photo #photohint { opacity: .8 !important; }
+  .photo.nohint #photohint { opacity: 0 !important; }
 </style>
 </head>
 <body>
-<div id="count" class="hud"><span class="gem">◆</span><span class="n">0</span><span class="tot"> / 0</span><div class="cpl">Checkpoint · I</div></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-gem" viewBox="0 0 24 24"><path d="M12 3l7 9-7 9-7-9z"/></symbol>
+  <symbol id="i-emblem" viewBox="0 0 64 64">
+    <path d="M32 3l22 29-22 29L10 32z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <path d="M32 17l10 15-10 15-10-15z" fill="currentColor"/>
+    <path d="M4 32h10M50 32h10M32 0v3M32 61v3" stroke="currentColor" stroke-width="1.5" opacity=".6"/>
+  </symbol>
+</svg>
+<div id="dashfx"></div>
+<div id="count" class="hud"><div class="c-row"><span class="gem"><svg class="ic"><use href="#i-gem"/></svg></span><span class="n">0</span><span class="tot"> / 0</span></div><div class="cpl">Checkpoint · I</div></div>
 <div id="fps" class="hud"></div>
+<div id="combat" class="hud" aria-label="Vida e combate"></div>
+<div id="objective" class="hud"><div class="o-title"></div><div class="o-next"></div><div class="o-meta"><span class="o-step"></span><span class="o-light"></span></div></div>
+<div id="guide" class="hud"><div class="g-title"></div><div class="g-text"></div></div>
+<div id="ending-caption" class="hud"><b>Uma luz para voltar</b><div class="rule"><i></i>◆<i></i></div><span>O caminho agora alcança quem ainda está na névoa.</span><small>ENTER / ESC · CONTINUAR</small></div>
 <div id="alt" class="hud"><div class="line"></div><div class="me"><span class="m">0 m</span><b></b></div></div>
 <div id="area" class="hud"><div class="num"></div><div class="name"></div><div class="line"></div><div class="sub"></div></div>
 <div id="msg" class="hud"></div>
+<div id="interact" class="hud"></div>
 <div id="loading" class="hud">carregando</div>
 <div id="title" class="hud">
-  <div class="t-main">Acima da Névoa</div>
-  <div class="t-sub">um pequeno salto de cada vez</div>
-  <div class="t-start">clique para começar</div>
+  <svg class="t-emblem"><use href="#i-emblem"/></svg>
+  <div class="t-kicker">Acima da</div>
+  <div class="t-main">Névoa</div>
+  <div class="rule"><i></i>◆<i></i></div>
+  <div class="t-sub">um pequeno salto de cada vez · uma luz para voltar</div>
+  <div class="t-start">Começar</div>
+  <div class="t-keys"><span><kbd>Enter</kbd> ou clique</span><span><kbd class="pad sys">Start</kbd></span></div>
 </div>
-<div id="pause" class="hud"><div class="p-title"></div><ul id="menu"></ul><div class="p-foot"></div></div>
+<div id="timer" class="hud"></div>
+<div id="toast" class="hud"><div class="t0">CONQUISTA</div><div class="t1"></div><div class="t2"></div></div>
+<div id="photohint" class="hud">WASD mover · Espaço/Shift subir/descer · mouse olhar · roda zoom · [ ] horário · Enter salvar foto · H esconder dica · Esc sair</div>
+<div id="pause" class="hud" role="dialog" aria-modal="true" aria-labelledby="menu-title">
+  <canvas id="map"></canvas>
+  <div class="menu-panel">
+    <div class="p-header">
+      <div class="p-meta"><span class="p-kicker"></span><span class="p-count"></span></div>
+      <h1 id="menu-title" class="p-title"></h1>
+      <div class="p-info"></div>
+    </div>
+    <div class="p-body">
+      <div id="album-preview"><img alt="Foto do marco"><span></span></div>
+      <ul id="menu" role="menu"></ul>
+    </div>
+    <div class="p-bottom"><div class="p-foot"></div><div class="p-nav"></div></div>
+  </div>
+</div>
 
 <script type="module" src="/src/main.js"></script>
 </body>
