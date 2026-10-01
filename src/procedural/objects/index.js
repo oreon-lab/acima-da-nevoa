@@ -61,3 +61,8 @@ export function animateObjects(t, dt, cp, emit, playerPosition) {
   updateRuinsPuzzle(t);
   updateLanterns();
 }
+// O Instante only has fragments and checkpoints of these (the journey's own objects are gone once you cross over)
+export function animateCore(t, dt, cp, emit) {
+  updatePickups(t, dt);
+  updateShrines(t, dt, cp, emit);
+}

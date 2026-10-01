@@ -23,15 +23,17 @@ const goal = document.querySelector('#objective'), guide = document.querySelecto
 let previous = -1, age = 0, goalText = '', guideText = '';
 export function resetGuide() { previous = -1; age = 0; }
 
-export function updateGuide(dt, player, save) {
+// over: { title, next, light, hint?: { title, text }, near? } replaces the lighthouse goal (O Instante has its own);
+// its hint shows for a while after each checkpoint, and again whenever `near` (the player is at the next challenge)
+export function updateGuide(dt, player, save, over = null) {
   if (previous !== player.cp) { previous = player.cp; age = 0; }
   if (game.state === 'play') age += dt;
   const cp = player.cp, memory = nextMemory(player.collected);
   const jump = pad.active ? 'A' : keyName(settings.binds.jump);
   let excursion = whaleHint(player, jump);
-  const title = save.done ? 'O farol voltou a brilhar' : 'Alcance o farol e restaure sua luz';
-  const destination = save.done ? 'Explore os caminhos que ficaram para trás' : cp < NAMES.length - 1 ? `Próxima ilha · ${NAMES[cp + 1]}` : 'Suba ao altar sob o cristal do farol';
-  const light = memory ? `Luz reunida · ${player.collected} / ${memory.at}` : 'Todas as centelhas do farol despertaram';
+  const title = over?.title ?? (save.done ? 'O farol voltou a brilhar' : 'Alcance o farol e restaure sua luz');
+  const destination = over?.next ?? (save.done ? 'Explore os caminhos que ficaram para trás' : cp < NAMES.length - 1 ? `Próxima ilha · ${NAMES[cp + 1]}` : 'Suba ao altar sob o cristal do farol');
+  const light = over?.light ?? (memory ? `Luz reunida · ${player.collected} / ${memory.at}` : 'Todas as centelhas do farol despertaram');
   const text = `${title}|${destination}|${light}|${cp}`;
   if (text !== goalText) {
     goalText = text;
@@ -43,12 +45,13 @@ export function updateGuide(dt, player, save) {
   const crossing = crossings[player.ground?.course ?? cp];
   const nearStart = crossing && Math.hypot(player.pos.x - crossing.start.x, player.pos.z - crossing.start.z) < 8;
   const onRoute = player.ground?.course !== undefined || (player.ground === null && crossing?.steps.some(c => Math.hypot(c.x - player.pos.x, c.z - player.pos.z) < 6 && Math.abs(c.y - player.pos.y) < 9));
-  const show = settings.tips && game.state === 'play' && (excursion || (!save.done && crossing && (age < 9 || nearStart || onRoute)));
+  const own = over?.hint && !save.done && (age < 12 || over.near);
+  const show = settings.tips && game.state === 'play' && (over ? own : (excursion || (!save.done && crossing && (age < 9 || nearStart || onRoute))));
   guide.classList.toggle('show', !!show);
   if (show) {
     const forward = pad.active ? 'Analógico esquerdo' : `${keyName(settings.binds.forward)}${keyName(settings.binds.left)}${keyName(settings.binds.back)}${keyName(settings.binds.right)}`;
-    const hint = excursion?.text ?? journeyHint(crossing.hint, jump, forward);
-    const heading = excursion?.title ?? crossing.title;
+    const hint = over ? over.hint.text : excursion?.text ?? journeyHint(crossing.hint, jump, forward);
+    const heading = over ? over.hint.title : excursion?.title ?? crossing.title;
     const next = `${heading}|${hint}`;
     if (next !== guideText) {
       guideText = next;

@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite';
 
 // base './' keeps the build working from any folder or sub-path.
-// showcase.html (object viewer) is served in dev only; the build has just index.html.
 // three.js core goes in its own chunk (cached across game updates); the FBX loader is imported on demand.
 export default defineConfig({
   base: './',

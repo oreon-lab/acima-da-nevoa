@@ -22,12 +22,13 @@ vec3 atmosColS(vec3 d, vec3 sunD){
   return c;
 }
 float fogAmount(vec3 wp, float dens){
+  float lk = dens < 0.0 ? 0.0 : 1.0; dens = abs(dens);   // negative density: no low mist layer (the rift cutscene)
   float d = length(wp - cameraPosition);
   float hMin = min(wp.y, cameraPosition.y);
   float layer = 1.0 - smoothstep(${f4(FOG_LAYER - 34)}, ${f4(FOG_LAYER + 8)}, hMin);
   // Keep the first landing targets readable; the distant horizon still dissolves into mist.
   float nearClear = mix(0.32, 1.0, smoothstep(7.0, 28.0, d));
-  return 1.0 - exp(-d * (dens + 0.015 * layer) * nearClear);
+  return 1.0 - exp(-d * (dens + 0.015 * layer * lk) * nearClear);
 }`;
 
 // Custom shaders share one sun/moon direction and one sky tint (both change with the time of day).
@@ -96,7 +97,7 @@ sky.frustumCulled = false;
 scene.add(sky);
 
 // ------------------------------------------------------------ sea of clouds far below (two layers for parallax)
-const seas = [[-42, 1.0, 0.007, 0.012], [-30, 0.45, 0.013, 0.02]].map(([y, a, s, sp]) => {
+export const seas = [[-42, 1.0, 0.007, 0.012], [-30, 0.45, 0.013, 0.02]].map(([y, a, s, sp]) => {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(3200, 3200).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
     transparent: true, depthWrite: false,
     uniforms: { uTime: U.time, uDensity: U.density, uA: { value: a }, uS: { value: s }, uSp: { value: sp }, ...SKY },

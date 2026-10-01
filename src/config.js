@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { world } from './mode.js';
 
 export const S_CHAR = 0.0038;                 // character.fbx is ~300 units tall
 export const PR = 0.34, PH = 1.05;            // player radius / height
@@ -7,8 +8,11 @@ export const SUN = new THREE.Vector3(-0.55, 0.42, -0.72).normalize();
 export const WIND = new THREE.Vector2(0.88, 0.47).normalize();
 export const FOG_LAYER = 22;                  // top of the low mist sea
 
-export const NAMES = ['Ninho da Névoa', 'Ilha do Orvalho', 'Degraus de Musgo', 'Ruínas do Vento', 'Espiral Antiga',
-  'Travessia Lenta', 'Bosque Pálido', 'Pedra Suspensa', 'Jardim das Brumas', 'Coroa de Pedra', 'O Farol Silencioso'];
+const INSTANTE_NAMES = ['O Instante', 'A Ilha Partida', 'O Jardim Suspenso', 'A Cachoeira Parada', 'A Corrente', 'O Farol Parado'];
+export const NAMES = world.instante ? [...INSTANTE_NAMES]
+  : ['Ninho da Névoa', 'Ilha do Orvalho', 'Degraus de Musgo', 'Ruínas do Vento', 'Espiral Antiga',
+    'Travessia Lenta', 'Bosque Pálido', 'Pedra Suspensa', 'Jardim das Brumas', 'Coroa de Pedra', 'O Farol Silencioso'];
+export const useInstanteNames = () => NAMES.splice(0, NAMES.length, ...INSTANTE_NAMES);   // crossing over in the same page
 export const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'];
 
 export const TIMES = ['automático', 'manhã', 'meio-dia', 'pôr do sol', 'noite'], TIME_TOD = [null, 0.08, 0.25, 0.5, 0.75];   // fixed times of day

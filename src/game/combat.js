@@ -19,9 +19,9 @@ const slashes = [0, 1].map(() => {
 });
 let damagePlayer = null, returnPlayer = null, hudText = '';
 
-export function buildCombat(model, onDamage, onReturn) {
+export function buildCombat(model, onDamage, onReturn, at = [0, 2, 4, 6, 8]) {   // at: island indices with a guard
   damagePlayer = onDamage; returnPlayer = onReturn;
-  for (const index of [0, 2, 4, 6, 8]) {
+  for (const index of at) {
     const island = islands[index];
     const spot = freeSpot(island, 0.12, 0.55, 0.9);
     if (!spot || waterAt(spot.x, spot.z)) continue;
@@ -190,7 +190,8 @@ export function updateCombatHud() {
   const status = combat.hp <= 0 ? 'Voltando ao checkpoint…' : combat.hurt > 0 ? 'Atingido' : combat.weaponTransition ? (combat.weaponTransition.toArmed ? 'Sacando espadas' : 'Guardando nas costas') : combat.attack ? 'Golpe duplo' : combat.armed ? 'Guarda de combate' : 'Espadas nas costas';
   const controls = `${cap('attack')}atacar${cap('equip')}sacar / guardar`;
   const hearts = Array.from({ length: 3 }, (_, i) => `<i${i < combat.hp ? ' class="on"' : ''}>♥</i>`).join('');
-  const text = `<div class="hp">${hearts}</div><div class="st">${status}</div><div class="kills">Guardas vencidos ${combat.defeated} / ${enemies.length}</div><div class="keys">${controls}</div>`;
+  const kills = enemies.length ? `<div class="kills">Guardas vencidos ${combat.defeated} / ${enemies.length}</div>` : '';   // O Instante has no guards
+  const text = `<div class="hp">${hearts}</div><div class="st">${status}</div>${kills}<div class="keys">${controls}</div>`;
   if (text !== hudText) { el.innerHTML = hudText = text; }
   el.classList.toggle('hurt', combat.hurt > 0);
   el.style.setProperty('--recovery', combat.attack ? `${1 - Math.min(1, combat.attack.time / combat.attack.duration)}` : '0');

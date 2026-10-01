@@ -101,7 +101,9 @@ function updateMapCam(dt) {
   camera.lookAt(t);
 }
 
+export const cineCam = { on: false };   // the rift cutscene drives the camera itself
 export function updateCamera(dt, player) {
+  if (cineCam.on) return;
   if (finaleCam.on) { if (game.state === 'ending') updateFinaleCamera(dt); return; }
   if (mapCam.on) return updateMapCam(dt);
   if (game.state === 'photo') return updateFree(dt, player);

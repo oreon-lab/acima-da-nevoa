@@ -17,5 +17,5 @@ export const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 
 export const U = { time: { value: 0 }, gust: { value: 0 }, player: { value: new THREE.Vector3() }, density: { value: 0.01 }, pscale: { value: 1 }, night: { value: 0 } };
 
 // 'loading' | 'title' | 'play' | 'pause' | 'photo' | 'ending'
-export const game = { state: 'loading', gameT: 0, restoration: 0, tod: 0.08, day: 1, wx: { fog: 0, rain: 0, flash: 0 } };   // tod: time of day 0..1 (0.25 noon, 0.75 midnight)
+export const game = { state: 'loading', timeScale: 1, gameT: 0, restoration: 0, tod: 0.08, day: 1, wx: { fog: 0, rain: 0, flash: 0 } };   // tod: time of day 0..1 (0.25 noon, 0.75 midnight)
 export const keys = {};

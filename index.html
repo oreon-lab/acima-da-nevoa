@@ -44,7 +44,7 @@
      Only what you need, in the corners: light collected + checkpoint (bottom left), objective (top left),
      time + combat (top right), height (right edge). No boxes. */
   #count, #alt { opacity: 0; }
-  .nohud #count, .nohud #alt { display: none; }
+  .nohud #count, .nohud #alt, .instante #alt, .instante #combat { display: none; }
   .playing #count { opacity: .88; }
   .playing #count.show { opacity: 1; }
   .playing #alt { opacity: .8; }
@@ -290,6 +290,19 @@
             transition: opacity .45s ease-out, transform .45s ease-out; }
   #dashfx.on { opacity: .22; transform: scale(1); transition: opacity .04s, transform .2s ease-out; }
 
+  /* ---- rift cutscene: letterbox bars, no HUD, and the closing line */
+  #cine { position: fixed; inset: 0; pointer-events: none; z-index: 5; font-family: Poppins, sans-serif; color: var(--ink); }
+  #cine::before, #cine::after { content: ''; position: absolute; left: 0; right: 0; height: 12vh; background: #000; transition: transform 1s var(--ease); }
+  #cine::before { top: 0; transform: translateY(-100%); } #cine::after { bottom: 0; transform: translateY(100%); }
+  .cinema.bars #cine::before, .cinema.bars #cine::after { transform: none; }
+  .cinema .hud, .cinema #dashfx { opacity: 0 !important; transition: opacity .35s; }
+  #cine .cap { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; opacity: 0; transition: opacity 2s; }
+  #cine .cap.show { opacity: 1; }
+  #cine .cap b { display: block; font-size: clamp(26px, 4vw, 46px); font-weight: 200; letter-spacing: .05em; }
+  #cine .cap .rule { margin: 18px 0 14px; }
+  #cine .cap span { display: block; font-size: 13px; color: var(--dim); letter-spacing: .08em; }
+  #cine .cap small { display: block; margin-top: 30px; font-size: 10px; font-weight: 500; letter-spacing: .24em; color: var(--faint); }
+
   /* ---- photo mode: every HUD element goes away except a small hint */
   #photohint { left: 0; right: 0; bottom: 22px; text-align: center; font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; opacity: 0; }
   .photo .hud { opacity: 0 !important; }
@@ -307,6 +320,7 @@
   </symbol>
 </svg>
 <div id="dashfx"></div>
+<div id="cine"><div class="cap"><b>O tempo voltou a andar</b><div class="rule"><i></i>◆<i></i></div><span>fim da prévia · a travessia continua</span><small>ENTER · VOLTAR À NÉVOA</small></div></div>
 <div id="count" class="hud"><div class="c-row"><span class="gem"><svg class="ic"><use href="#i-gem"/></svg></span><span class="n">0</span><span class="tot"> / 0</span></div><div class="cpl">Checkpoint · I</div></div>
 <div id="fps" class="hud"></div>
 <div id="combat" class="hud" aria-label="Vida e combate"></div>

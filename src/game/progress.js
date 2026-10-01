@@ -2,13 +2,20 @@
 // across runs (best time + its ghost, learned abilities, achievements and places found).
 import { toast } from './ui.js';
 import { tone } from './audio.js';
+import { world, trailerMode } from '../mode.js';
 
 // Isolated saves for local visual QA; never read or write a player's journey while previewing tests.
-const qa = import.meta.env?.DEV && new URLSearchParams(location.search).has('qa');
-const KEY = qa ? 'nevoa-qa-save' : 'nevoa-save', GKEY = qa ? 'nevoa-qa-ghost' : 'nevoa-ghost';
-const RUN = () => ({ cp: 0, got: [], runT: 0, falls: 0, done: false, dirty: false, ruins: false, rec: [] });
-export const save = { ver: '', ...RUN(), glide: false, best: null, records: {}, memories: [], ach: {}, visited: [], detours: [], album: [] };
+// O Instante keeps its own save, so crossing over never touches the journey above the mist.
+const qa = trailerMode !== null || (import.meta.env?.DEV && new URLSearchParams(location.search).has('qa'));
+let KEY, GKEY;
+const useKeys = instante => { const base = instante ? 'nevoa-instante' : 'nevoa'; KEY = qa ? `${base}-qa-save` : `${base}-save`; GKEY = qa ? `${base}-qa-ghost` : `${base}-ghost`; };
+useKeys(world.instante);
+const RUN = () => ({ cp: 0, got: [], runT: 0, falls: 0, done: false, dirty: false, ruins: false, rec: [], echoes: [] });   // echoes: O Instante's stopped clocks
+const KEPT = () => ({ glide: false, best: null, records: {}, memories: [], ach: {}, visited: [], detours: [], album: [] });
+export const save = { ver: '', ...RUN(), ...KEPT() };
 export let ghost = null;   // { ver, t, rec } of the best run
+// crossing over in the same page: from here on read and write O Instante's save (the journey's is saved first)
+export function useInstanteSave() { persist(); useKeys(true); Object.assign(save, RUN(), KEPT()); ghost = null; }
 
 export const ACH = [
   ['summit', 'Acima da névoa', 'Chegar ao farol'],
@@ -52,6 +59,7 @@ export function loadSave(ver, nIslands, nPickups, addedPickupIndex = -1, compati
         save.runT = Number.isFinite(s.runT) && s.runT > 0 ? s.runT : 0;
         save.falls = Number.isInteger(s.falls) ? s.falls : 0;
         save.done = s.done === true; save.dirty = s.dirty === true; save.ruins = s.ruins === true;
+        save.echoes = arr(s.echoes).filter(Number.isInteger);
         save.rec = arr(s.rec).filter(f => Array.isArray(f) && f.length === 4 && f.every(Number.isFinite));
       }
     }

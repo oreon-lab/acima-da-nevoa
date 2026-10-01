@@ -9,7 +9,7 @@ import { islands, secrets, counts, pickups, summit, updrafts, ponds, colR, groun
 import { lightShrine, waterWake } from '../procedural/objects/index.js';
 import { puff, burst, sparks, SPARK_W } from '../fx/particles.js';
 import { grade } from '../render/post.js';
-import { tone, playSample, stepSound, glideSound, swordWhoosh, dashSound } from './audio.js';
+import { tone, playSample, stepSound, landSound, glideSound, swordWhoosh, dashSound } from './audio.js';
 import { setCount, flashCount, areaTitle, toast } from './ui.js';
 import { canCollect, MEMORIES } from './journeyRules.js';
 import { held, move, rumble } from './input.js';
@@ -23,12 +23,13 @@ export const player = {
   dashT: 0, dashCd: 0, dashX: 0, dashZ: 0, airDashed: false,
 };
 export const setPlayerVisible = v => { root.visible = v; };   // the body is hidden in first person
-export const hooks = { finale: null, strike: null, aim: null, respawn: null };
+export const hooks = { rift: null, finale: null, strike: null, aim: null, respawn: null };
 
 // rig: position -> facing -> lean -> squash & stretch -> model
 const root = new THREE.Group(), yawG = new THREE.Group(), tiltG = new THREE.Group(), sqG = new THREE.Group();
 root.add(yawG); yawG.add(tiltG); tiltG.add(sqG);
 scene.add(root);
+export const rig = root;   // the rift cutscene moves the body directly
 // contact shadow so the jump height always reads
 const blob = new THREE.Mesh(new THREE.CircleGeometry(0.42, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x1b2430, transparent: true, opacity: 0.25, depthWrite: false, fog: false }));
 scene.add(blob);
@@ -45,6 +46,7 @@ function startWeaponTransition(toArmed, attackAfter = false) {
   combat.pendingAttack = attackAfter;
   oneShot = null; player.idleT = 0;
   play(name, 0.06, DRAW_RATE, 0, true);
+  playSample('draw', { vol: toArmed ? 0.4 : 0.25, jitter: 0.03, at: { x: player.pos.x, y: player.pos.y + 0.7, z: player.pos.z } });
   return true;
 }
 
@@ -264,6 +266,7 @@ function dust(n, spd, size, alpha) {   // dust / blades / droplets, tinted by th
   puff(p.x, p.y, p.z, n, spd, size, alpha, c, lift);
 }
 function footstep() {
+  if (!player.grounded || Math.hypot(player.vel.x, player.vel.z) <= 0.8) return;
   const s = player.surface || 'stone';
   dust(s === 'water' ? 8 : s === 'sand' ? 5 : 4, s === 'water' ? 1.0 : 0.7, s === 'water' ? 0.2 : 0.24, s === 'water' ? 0.5 : 0.34);
   stepSound(s);
@@ -275,15 +278,16 @@ function onJump() {
   if (!combat.attack && !combat.weaponTransition) play('Jump', 0.08, 1.35, 0.12, true);
   dust(5, 1.2, 0.3, 0.3);
   const feet = { x: player.pos.x, y: player.pos.y + 0.2, z: player.pos.z };
-  if (!playSample('jump', { vol: 3, jitter: 0.06, at: feet })) tone([180], { dur: 0.12, vol: 0.05, slide: 1.8, at: feet });
+  if (!playSample('cloth', { vol: 0.2, jitter: 0.05, at: feet }) && !playSample('jump', { vol: 3, jitter: 0.06, at: feet }))
+    tone([180], { dur: 0.12, vol: 0.05, slide: 1.8, at: feet });
 }
 function onLand(impact) {
   player.sqV -= Math.min(impact * 0.22, 4.5);
   player.jumpAnim = false;
   dust(Math.round(clamp(impact * 0.9, 3, 16)), 0.8 + impact * 0.12, 0.35 + impact * 0.02, 0.45);
-  stepSound(player.surface, clamp(impact / 8, 0.7, 2));
+  landSound(player.surface, clamp(impact / 8, 0.7, 2));
   if (impact > 12) rumble(Math.min(impact / 30, 0.7), 100);
-  if (impact > 4) tone([95], { dur: 0.16, vol: Math.min(0.03 + impact * 0.008, 0.14), slide: 0.55, at: player.pos });
+  if (impact > 12) tone([95], { dur: 0.16, vol: Math.min(0.03 + impact * 0.008, 0.14), slide: 0.55, at: player.pos });
 }
 // counted achievements; call after anything they count changes
 export function checkAch() {
@@ -502,7 +506,10 @@ export function updatePlayer(dt) {
   // gameplay triggers
   if (player.grounded) {
     const g = player.ground;
-    if (g.island !== undefined) { if (g.island > player.cp) activateCheckpoint(g.island); visit('i' + g.island); }
+    if (g.island !== undefined) {
+      if (g.island > player.cp) { activateCheckpoint(g.island); if (g.island === islands.length - 1) hooks.rift?.(); }   // first step on the last island: the rift
+      visit('i' + g.island);
+    }
     if (g.secret !== undefined) visit('s' + g.secret);
     if (g.whaleDeck) unlock('whale');
     if (g.detour !== undefined && mark('detours', g.detour)) checkAch();
@@ -543,3 +550,6 @@ export function syncRig() {
     blob.scale.setScalar(0.6 + 0.4 * k); blob.material.opacity = 0.28 * k;
   }
 }
+
+// the trailer director (game/trailer.js) moves the body itself and borrows the game's own jump and landing reactions
+export const puppet = { jump: () => onJump(), land: impact => onLand(impact) };

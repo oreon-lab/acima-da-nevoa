@@ -13,7 +13,7 @@ export function installHeadlessPresentation() {
       export const keys = {}; export const game = { state: 'play', gameT: 0, restoration: 0, tod: 0.08, day: 1, wx: { rain: 0, fog: 0, flash: 0 } };
       export const U = { time: { value: 0 }, gust: { value: 0 }, player: { value: new THREE.Vector3() }, density: { value: 0.01 }, pscale: { value: 1 }, night: { value: 0 } };`,
     '/src/game/ui.js': ['setCount', 'flashCount', 'areaTitle', 'toast'].map(n => `export const ${n} = ${noop};`).join('\n'),
-    '/src/game/audio.js': ['tone', 'playSample', 'stepSound', 'glideSound', 'swordWhoosh', 'dashSound'].map(n => `export const ${n} = ${noop};`).join('\n'),
+    '/src/game/audio.js': ['tone', 'playSample', 'stepSound', 'landSound', 'glideSound', 'swordWhoosh', 'dashSound'].map(n => `export const ${n} = ${noop};`).join('\n'),
     '/src/render/post.js': 'export const grade = { uniforms: { uFade: { value: 0 } } };',
   };
   registerHooks({ load(url, context, nextLoad) {

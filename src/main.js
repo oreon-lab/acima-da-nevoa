@@ -7,46 +7,85 @@ import characterUrl from '../assets/ninja.glb?url';
 import { prepareCharacter } from './game/characterAsset.js';
 import { combat } from './game/combatRules.js';
 import { buildCombat, resetCombat, respawnCombat, defeatAllEnemies, reviveAllEnemies, swordStrike, assistAttackYaw, updateCombat, updateCombatHud, enemies } from './game/combat.js';
-import { canvas, scene, camera, U, game, keys } from './core.js';
-import { settings, saveSettings, resetSettings, dev, TIMES, TIME_TOD, DAYS, NAMES, ROMAN, DEFAULT_BINDS } from './config.js';
+import { canvas, scene, camera, renderer, U, game, keys } from './core.js';
+import { settings, saveSettings, resetSettings, dev, TIMES, TIME_TOD, DAYS, NAMES, ROMAN, DEFAULT_BINDS, useInstanteNames } from './config.js';
 import { clamp, lerp, damp } from './utils.js';
 import { updateAtmosphere, applyShadows } from './render/atmosphere.js';
 import { composer, grade, bloom, applyQuality } from './render/post.js';
+import * as THREE from 'three';
 import { buildLevel } from './procedural/level.js';
+import { buildInstante, updateInstante, updatePieces, applyInstanteRun, instanteGoal, instantePrompt, welcome, instante } from './procedural/instante.js';
+import { world, worldUrl, trailerMode } from './mode.js';
+import { startCrossing, updateCrossing, crossing } from './game/crossing.js';
+import { PULL, worldMat } from './procedural/materials.js';
 import { whale } from './procedural/objects/whale.js';
 import { WORLD_REVISION } from './procedural/course.js';
 import { updateRouteMarks } from './procedural/objects/routeMarks.js';
 import { resetGuide, updateGuide } from './game/guide.js';
 import { MEMORIES, restorationTarget } from './game/journeyRules.js';
-import { islands, secrets, landmarks, pickups, summit, colliders, near, updrafts, ponds, updateMovers } from './procedural/world.js';
-import { animateObjects, lightShrine, resetShrines, loadProps, ruinsPuzzle, setRuinsSolved, nearestRuinsMirror, rotateRuinsMirror } from './procedural/objects/index.js';
+import { islands, secrets, landmarks, pickups, summit, colliders, near, updrafts, ponds, updateMovers, clearWorld } from './procedural/world.js';
+import { animateObjects, animateCore, lightShrine, resetShrines, loadProps, ruinsPuzzle, setRuinsSolved, nearestRuinsMirror, rotateRuinsMirror } from './procedural/objects/index.js';
 import { updateFx } from './fx/particles.js';
 import { updateFauna } from './fx/fauna.js';
 import { updateWeather, forceWeather } from './fx/weather.js';
-import { player, hooks, collectAll, attachCharacter, spawnAt, updatePlayer, updateAnim, updateFade, startRespawn, fade, requestAttack, requestDash, toggleWeapons, receiveHit, setPlayerVisible } from './game/player.js';
+import { player, hooks, collectAll, attachCharacter, spawnAt, updatePlayer, updateAnim, updateFade, startRespawn, fade, requestAttack, requestDash, toggleWeapons, receiveHit, setPlayerVisible, rig } from './game/player.js';
 import { cam, free, mapCam, finaleCam, startFinaleCamera, stopFinaleCamera, startFree, updateCamera, orbitCamera, updateCameraInput, recenterCamera, toggleView } from './game/camera.js';
+import { startCutscene, updateCutscene, cutscene, seekCutscene, beat } from './game/cutscene.js';
+import { trailer } from './game/trailer.js';
 import { initAudio, updateAudio, updateWhaleVoice, glideSound, tone } from './game/audio.js';
 import { carrierPoint } from './procedural/whaleRoute.js';
 import { whaleVoice } from './procedural/objects/whaleModel.js';
 import { ACTIONS, pad, pollPad, keyName, cap } from './game/input.js';
-import { save, ghost, ACH, loadSave, persist, newRun, saveGhost, unlock, mark, achCount, fmtTime } from './game/progress.js';
+import { save, ghost, ACH, loadSave, persist, newRun, saveGhost, unlock, mark, achCount, fmtTime, useInstanteSave } from './game/progress.js';
 import { photoTarget, albumImage, storeAlbumImage } from './game/album.js';
 import { initGhost, record, updateGhost } from './game/ghost.js';
 import { drawMapOverlay } from './game/map.js';
 import { setCount, initGauge, setGauge, showCount, areaTitle, toast, showTitle, loadingText, openMenu, closeMenu, menuKey, refresh, setTimer } from './game/ui.js';
 
-const level = buildLevel();
-hooks.strike = swordStrike;
+const persistent = new Set(scene.children);   // what exists before a world is built (sky, lights, player, effects…)
+const level = world.instante ? buildInstante() : buildLevel();
+hooks.strike = (actor, swing) => { swordStrike(actor, swing); if (trailer.on) trailer.sound('slice'); };
 hooks.aim = assistAttackYaw;
 hooks.respawn = respawnCombat;
-loadProps().catch(err => console.error('props', err));
-const TOP = islands[islands.length - 1].y;
-loadSave(`${WORLD_REVISION}.${islands.length}.${secrets.length}.${pickups.length}.${Math.round(TOP * 100)}`, islands.length, pickups.length, -1, level.compatibleVersions);
+const propsReady = loadProps().catch(err => { console.error('props', err); if (trailerMode !== null) throw err; });
+let TOP = world.instante ? 12 : islands[islands.length - 1].y;   // O Instante has no climb: its atmosphere is fixed
+const worldVersion = () => `${WORLD_REVISION}.${islands.length}.${secrets.length}.${pickups.length}.${Math.round(TOP * 100)}`;
+function instanteLook() {   // the other side: its own title, no height gauge
+  document.body.classList.add('instante');
+  document.querySelector('#title .t-kicker').textContent = 'do outro lado';
+  document.querySelector('#title .t-main').textContent = 'O Instante';
+  document.querySelector('#title .t-sub').textContent = 'o mundo parado no momento em que foi arrancado';
+}
+if (world.instante) instanteLook();
+loadSave(worldVersion(), islands.length, pickups.length, -1, level.compatibleVersions);
 ruinsPuzzle.onSolved = () => {
   save.ruins = true; persist(); unlock('ruins');
   toast('O relicário despertou', 'Um fragmento de luz apareceu entre os espelhos.', 'DESCOBERTA');
 };
 initGauge(islands.map(i => i.y));
+
+// Crossing over (called from the black inside the horizon, see crossing.js): the journey is saved, its world taken
+// down, O Instante built into the same arrays, and a fresh run there begun. Nothing is visible while it happens.
+function enterInstante() {
+  useInstanteSave();
+  for (const o of [...scene.children]) {
+    if (persistent.has(o)) continue;
+    scene.remove(o);
+    o.traverse(n => { if (n.geometry?.attributes.position?.count > 20000) n.geometry.dispose(); });   // the big merged meshes
+  }
+  clearWorld(); enemies.length = 0; whale.pose = null;
+  PULL.uPull.value.w = -1000; PULL.uFocus.value.w = 0; worldMat.side = THREE.FrontSide; worldMat.needsUpdate = true;
+  grade.uniforms.uLens.value = 0; grade.uniforms.uGray.value = 0; grade.uniforms.uGlitch.value = 0;
+  rig.traverse(o => { if (o.isMesh) o.castShadow = true; });   // the cutscene turned every shadow off
+  forceWeather(1);
+  world.instante = true; useInstanteNames(); instanteLook();
+  const built = buildInstante();
+  TOP = 12;
+  loadSave(worldVersion(), islands.length, pickups.length, -1, built.compatibleVersions);
+  newRun();
+  applyRun();
+}
+cutscene.onThrough = () => startCrossing(enterInstante);
 
 // put the world in the state of the saved run (also used for a new journey)
 function applyRun() {
@@ -56,6 +95,7 @@ function applyRun() {
   resetShrines();
   for (let i = 0; i <= save.cp; i++) lightShrine(i);
   pickups.forEach((k, i) => { k.got = save.got.includes(i); k.g.visible = !k.got; k.g.scale.setScalar(1); k.anim = 0; });
+  if (world.instante) { save.glide = true; applyInstanteRun(); }
   setRuinsSolved(save.ruins);
   player.cp = save.cp; player.collected = save.got.length;
   summit.reached = save.done;
@@ -85,11 +125,12 @@ function start() {
   document.body.classList.add('playing');   // the HUD only exists once you are in the game
   showTitle(false);
   initAudio(); lock();
+  if (world.instante && save.runT < 1) welcome(2600);
   setTimeout(() => areaTitle(player.cp, player.cp ? 'checkpoint' : ''), 1400);
   // Guidance stays attached to the current crossing, rather than disappearing before the player gets there.
 }
 function pause() {
-  if (game.state !== 'play') return;
+  if (game.state !== 'play' || trailerMode !== null) return;   // a trailer render is never interrupted by a lost focus
   game.state = 'pause'; pausedAt = performance.now();
   document.body.classList.add('paused');
   clearKeys(); glideSound(0); persist();
@@ -121,6 +162,23 @@ function newJourney() {
   setTimeout(() => areaTitle(0, ''), 900);
 }
 
+// the rift: the last island's first step starts the black hole cutscene (see cutscene.js). O Instante ends when its
+// lighthouse is rewound instead (instante.js), then shows the closing card.
+hooks.rift = () => {
+  if (world.instante) return;
+  if (game.state !== 'play') return;
+  game.state = 'cutscene'; clearKeys(); glideSound(0);
+  document.exitPointerLock?.();
+  player.vel.set(0, 0, 0);
+  startCutscene();
+};
+// O Instante's closing card (the only one: the rift carries straight on into the crossing); confirm goes back
+instante.onEnd = () => {
+  clearKeys(); glideSound(0); document.exitPointerLock?.();
+  save.done = true; persist();
+  document.querySelector('#cine .cap').classList.add('show'); cutscene.done = true;
+};
+const crossOver = () => { location.href = worldUrl(false); };
 hooks.finale = () => { unlock('summit'); completeJourney(); };
 // end of the journey: achievements, best time + ghost, then the end screen
 function completeJourney() {
@@ -376,6 +434,11 @@ const devWorldMenu = () => devPage('Modo Deus · Mundo', [
     for (let i = 0; i <= player.cp; i++) lightShrine(i);
     resume();
   } }, 'Vai ao píer da Baleia das Brumas. Invalida o recorde desta jornada'),
+  hint({ label: 'Prévia do buraco negro', act: () => {
+    cheat(); player.cp = save.cp = islands.length - 2; spawnAt(islands.length - 1);
+    for (let i = 0; i < islands.length - 1; i++) lightShrine(i);
+    cam.blend = 1; cam.follow.copy(player.pos); updateCamera(0, player); resume();
+  } }, 'Pisa na última ilha pela primeira vez e dispara a cutscene do buraco negro. Invalida o recorde desta jornada'),
   hint({ label: 'Prévia do encerramento', act: () => {
     cheat(); player.cp = save.cp = islands.length - 1;
     spawnAt(player.cp); summit.reached = false; save.done = false;
@@ -406,6 +469,10 @@ addEventListener('keydown', e => {
     if (e.code === 'Escape' && performance.now() - pausedAt < 400) return;   // same Esc that released the pointer
     return menuKey(e);
   }
+  if (game.state === 'cutscene') {   // no control; at the end any confirm crosses over (the world is gone)
+    if (cutscene.done && !e.repeat && (e.code === 'Enter' || e.code === 'Space' || e.code === 'Escape')) crossOver();
+    return;
+  }
   if (e.repeat) return;
   if (game.state === 'ending') {
     if (e.code === 'Enter' || e.code === 'Escape' || e.code === settings.binds.pause) finishEnding();
@@ -416,8 +483,8 @@ addEventListener('keydown', e => {
   if (game.state === 'title' && (e.code === 'Enter' || e.code === b.jump)) return start();
   if (game.state === 'play') {
     if (e.code === b.jump) player.jumpBuf = 0.14;
-    if (e.code === b.attack) requestAttack();
-    if (e.code === b.equip) toggleWeapons();
+    if (e.code === b.attack && !world.instante) requestAttack();   // O Instante: held, it stops time (instante.js)
+    if (e.code === b.equip && !world.instante) toggleWeapons();
     if (e.code === b.view) toggleView();
     if (e.code === b.dash) requestDash();
     if (e.code === 'Escape' || e.code === b.pause) pause();
@@ -434,12 +501,12 @@ addEventListener('blur', () => { clearKeys(); if (game.state === 'photo') exitPh
 canvas.addEventListener('mousedown', e => {
   if (game.state === 'title') start();
   else if (game.state === 'play' || game.state === 'photo') {
-    if (game.state === 'play' && e.button === 0) requestAttack();
+    if (game.state === 'play' && e.button === 0) { if (world.instante) instante.mouseStop = true; else requestAttack(); }
     if (!locked()) lock(); dragging = true;
   }
 });
 document.querySelector('#pause').addEventListener('mousedown', e => { if (mapCam.on && !e.target.closest('.menu-panel')) mapDrag = true; });
-addEventListener('mouseup', () => { dragging = mapDrag = false; });
+addEventListener('mouseup', () => { dragging = mapDrag = false; instante.mouseStop = false; });
 addEventListener('mousemove', e => {
   if (mapCam.on && mapDrag) { mapCam.yaw -= e.movementX * 0.006; mapCam.pitch = clamp(mapCam.pitch + e.movementY * 0.004, 0.3, 1.45); return; }
   if (!(locked() || dragging)) return;
@@ -473,8 +540,8 @@ function handlePad() {
   if (game.state === 'title') { if (P.jump || P.pause) start(); }
   else if (game.state === 'play') {
     if (P.jump) player.jumpBuf = 0.14;
-    if (P.attack) requestAttack();
-    if (P.equip) toggleWeapons();
+    if (P.attack && !world.instante) requestAttack();
+    if (P.equip && !world.instante) toggleWeapons();
     if (P.recenter) recenterCamera(player.yaw);
     if (P.view) toggleView();
     if (P.dash) requestDash();
@@ -482,6 +549,7 @@ function handlePad() {
   }
   else if (game.state === 'photo') { if (P.photo || P.back2 || P.pause) exitPhoto(); else if (P.jump) shot = true; }
   else if (game.state === 'ending') { if (P.jump || P.back2 || P.pause) finishEnding(); }
+  else if (game.state === 'cutscene') { if (cutscene.done && (P.jump || P.pause)) crossOver(); }
   else if (game.state === 'pause' && !capturing) {
     if (P.pause) return resume();
     for (const k in PAD_MENU) if (P[k]) menuKey({ code: PAD_MENU[k] });
@@ -495,8 +563,9 @@ import('three/addons/loaders/GLTFLoader.js')
     const gltf = await loader.loadAsync(characterUrl);
     const fbx = prepareCharacter(gltf.scene, gltf.animations);
     attachCharacter(fbx); initGhost(fbx);
-    buildCombat(fbx, receiveHit, () => startRespawn());
-    respawnCombat(player); loadingText(null); game.state = 'title'; showTitle(true);
+    buildCombat(fbx, receiveHit, () => startRespawn(), world.instante ? [] : undefined);
+    respawnCombat(player); loadingText(null);
+    if (trailerMode !== null) { await propsReady; await trailer.init({ tick, clip: trailerMode }); } else { game.state = 'title'; showTitle(true); }
   })
   .catch(err => { console.error(err); loadingText('não foi possível carregar o personagem'); });
 
@@ -528,31 +597,39 @@ let last = performance.now(), timerTxt = '';
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = clamp((now - last) / 1000, 0, 1 / 30); last = now;
-  const t = (U.time.value += dt);
+  tick(dt);
+}
+// one step of the whole game; the trailer renderer calls it with a fixed dt, one call per output frame
+function tick(dt) {
+  const wdt = dt * game.timeScale;   // world time: the rift can stop it
+  const t = (U.time.value += world.instante && !instante.thawed ? 0 : wdt);   // O Instante: the world's clock is stopped
   handlePad();
   const playing = game.state === 'play', paused = game.state === 'pause', photo = game.state === 'photo';
   if (playing) game.gameT += dt;
+  if (trailer.on) trailer.pre(dt);
 
   updateCameraInput(dt);
   updateMovers(game.gameT);
-  if (playing) {
+  if (world.instante) updatePieces(dt);   // before the player, so a moving rock carries you
+  if (playing && !trailer.on) {
     updatePlayer(dt); updateFade(dt);
     if (!save.done) { save.runT += dt; record(save.rec, save.runT, player.pos, player.yaw); }
-  } else if (!paused && !photo && fade.phase === 'in') updateFade(dt * 0.5);
+  } else if (!paused && !photo && !trailer.on && fade.phase === 'in') updateFade(dt * 0.5);
+  if (trailer.on) trailer.update(dt);
   if (photo) grade.uniforms.uFade.value = Math.max(0, grade.uniforms.uFade.value - dt * 3);
-  if (!paused && !photo) updateAnim(dt);   // photo mode freezes the pose
+  if (!paused && !photo) updateAnim(wdt);   // photo mode freezes the pose
   if (playing) updateCombat(dt, player, fade.phase);
   updateCombatHud();
   updateGhost(save.done || game.state === 'title' ? null : ghost, save.runT, playing ? dt : 0, player.pos);
   updateCamera(dt, player);
   setPlayerVisible(!cam.first || game.state !== 'play');
   if (game.state === 'ending' && finaleCam.t >= 8) finishEnding();
-  updateGuide(dt, player, save);
-  if (!paused && !photo) game.restoration = damp(game.restoration, restorationTarget(player.collected, save.done), 0.65, dt);
+  updateGuide(dt, player, save, world.instante ? instanteGoal() : null);
+  if (!paused && !photo && !world.instante && !trailer.on) game.restoration = damp(game.restoration, restorationTarget(player.collected, save.done), 0.65, dt);   // the trailer sets it per shot
   const interact = document.querySelector('#interact');
-  const mirror = playing && nearestRuinsMirror(player.pos);
-  interact.classList.toggle('show', !!mirror);
-  if (mirror) { const html = `${cap('interact')}girar espelho para o cristal central`; if (interact.innerHTML !== html) interact.innerHTML = html; }
+  const mirror = playing && nearestRuinsMirror(player.pos), act = world.instante ? instantePrompt() : mirror && { act: 'interact', text: 'girar espelho para o cristal central' };
+  interact.classList.toggle('show', !!act);
+  if (act) { const html = `${cap(act.act)}${act.text}`; if (interact.innerHTML !== html) interact.innerHTML = html; }
   if (photo) {
     const target = photoTarget(camera, landmarks, save.album);
     document.querySelector('#photohint').textContent = performance.now() < photoNoticeUntil ? photoNotice
@@ -560,26 +637,41 @@ function frame(now) {
         : 'WASD mover · Espaço/Shift subir/descer · mouse olhar · roda zoom · [ ] horário · Enter salvar foto · H esconder dica · Esc sair';
   }
   if (playing || paused) setGauge(player.pos.y, player.cp);
-  animateObjects(t, dt, player.cp, !paused, player.pos);
-  updateRouteMarks(player.pos);
-  if (!paused) { updateFx(dt, player.pos); updateFauna(t); }
+  if (world.instante) animateCore(t, wdt, player.cp, !paused);
+  else { animateObjects(t, wdt, player.cp, !paused, player.pos); updateRouteMarks(player.pos); }
+  if (!paused) { updateFx(wdt, player.pos); if (!world.instante) updateFauna(t); }
   updateWeather(dt, playing);
   if (photo && (keys.BracketLeft || keys.BracketRight)) game.tod = (game.tod + (keys.BracketRight ? 1 : -1) * dt * 0.05 + 1) % 1;   // scrub the time of day
   else if (TIME_TOD[settings.time] !== null) game.tod = TIME_TOD[settings.time];   // fixed time of day
   else if (playing && !dev.freezeTime) game.tod = (game.tod + dt / DAYS[settings.dayLen]) % 1;
-  const alt = updateAtmosphere(t, dt, mapCam.on ? mapCam.t : player.pos, TOP, game.tod);   // shadows follow what you look at
+  if (world.instante) game.tod = 0.46;   // the sun stopped low: a frozen sunset (only visible in colour inside the bubble)
+  const alt = updateAtmosphere(t, dt, trailer.focus ?? (mapCam.on ? mapCam.t : player.pos), TOP, game.tod);   // shadows follow what you look at
   bloom.strength = lerp(0.7, 0.32, game.day);   // lanterns and crystals glow more at night
   grade.uniforms.uFadeCol.value.copy(scene.fog.color).multiplyScalar(0.88);
+  if (world.instante) updateInstante(dt);   // after the atmosphere and the fade colour: it overrides both
   grade.uniforms.uTime.value = t;
   updateAudio(alt, paused);
   if (whale.pose) whaleVoice.level = updateWhaleVoice(dt, carrierPoint(whale.pose, 11.5, -2.6, 0), paused);
   const tt = fmtTime(save.runT) + (save.best !== null ? `  ·  recorde ${fmtTime(save.best)}` : '') + (save.dirty ? '  ·  dev' : '');
   if (tt !== timerTxt) setTimer(timerTxt = tt);
-  composer.render();
+  updateCutscene(dt);
+  updateCrossing(dt);   // after the cutscene: it takes over on the frame the horizon is crossed
+  if (trailer.on) trailer.post();   // a trailer shot may take the camera back from the cutscene
+  if (!trailer.quick) composer.render();   // the trailer seeks silently between shots
   if (shot) { shot = false; saveShot(); }
   if (mapCam.on) drawMapOverlay(mapCanvas, camera, player, mapCam.focus, t);
   fps.n++; fps.t += dt;
   if (fps.t > 0.5) { fps.el.textContent = settings.fps ? Math.round(fps.n / fps.t) + ' fps' : ''; fps.n = 0; fps.t = 0; }
 }
-requestAnimationFrame(frame);
-if (import.meta.env.DEV) window.dbg = { whale, free, U, cam, colliders, near, updrafts, ponds, player, save, game, settings, dev, islands, secrets, pickups, keys, spawnAt, pause, enterPhoto, combat, enemies, requestAttack, toggleWeapons, step: n => { for (let i = 0; i < n; i++) frame(last + 1000 / 60); } };   // console poking in dev only
+if (!trailerMode) requestAnimationFrame(frame);
+if (import.meta.env.DEV) {   // console poking in dev only
+  window.dbg = { cutscene, scene, camera, renderer, whale, free, U, cam, colliders, near, updrafts, ponds, player, save, game, settings, dev, islands, secrets, pickups, keys, spawnAt, pause, enterPhoto, combat, enemies, requestAttack, toggleWeapons, instante, step: n => { for (let i = 0; i < n; i++) tick(1 / 60); } };
+  dbg.cutscene.seek = n => {   // dbg.cutscene.seek(dbg.cutscene.beat(9))
+    if (!cutscene.on) {
+      if (game.state !== 'play') console.warn(`dbg.cutscene.seek: o jogo está em '${game.state}' — comece (Enter) para o corte não ficar por baixo do título`);
+      hooks.rift();
+    }
+    return seekCutscene(n);
+  };
+  dbg.cutscene.beat = beat;
+}
