@@ -21,10 +21,10 @@ import { PULL, worldMat } from './procedural/materials.js';
 import { whale } from './procedural/objects/whale.js';
 import { WORLD_REVISION } from './procedural/course.js';
 import { updateRouteMarks } from './procedural/objects/routeMarks.js';
-import { resetGuide, updateGuide } from './game/guide.js';
-import { MEMORIES, restorationTarget } from './game/journeyRules.js';
-import { islands, secrets, landmarks, pickups, summit, colliders, near, updrafts, ponds, updateMovers, clearWorld } from './procedural/world.js';
-import { animateObjects, animateCore, lightShrine, resetShrines, loadProps, ruinsPuzzle, setRuinsSolved, nearestRuinsMirror, rotateRuinsMirror } from './procedural/objects/index.js';
+import { resetGuide, updateGuide, tutorial } from './game/guide.js';
+import { restorationTarget } from './game/journeyRules.js';
+import { islands, secrets, pickups, summit, colliders, near, updrafts, ponds, updateMovers, clearWorld } from './procedural/world.js';
+import { animateObjects, animateCore, lightShrine, resetShrines, loadProps } from './procedural/objects/index.js';
 import { updateFx } from './fx/particles.js';
 import { updateFauna } from './fx/fauna.js';
 import { updateWeather, forceWeather } from './fx/weather.js';
@@ -36,18 +36,22 @@ import { initAudio, updateAudio, updateWhaleVoice, glideSound, tone } from './ga
 import { carrierPoint } from './procedural/whaleRoute.js';
 import { whaleVoice } from './procedural/objects/whaleModel.js';
 import { ACTIONS, pad, pollPad, keyName, cap } from './game/input.js';
-import { save, ghost, ACH, loadSave, persist, newRun, saveGhost, unlock, mark, achCount, fmtTime, useInstanteSave } from './game/progress.js';
-import { photoTarget, albumImage, storeAlbumImage } from './game/album.js';
+import { save, ghost, loadSave, persist, newRun, saveGhost, fmtTime, useInstanteSave } from './game/progress.js';
 import { initGhost, record, updateGhost } from './game/ghost.js';
+import { setCheats, toggleCheats, cheatsOpen } from './game/cheatPanel.js';
+import { initTutorial, startTutorial, endTutorial, updateTutorial } from './game/tutorial.js';
 import { drawMapOverlay } from './game/map.js';
-import { setCount, initGauge, setGauge, showCount, areaTitle, toast, showTitle, loadingText, openMenu, closeMenu, menuKey, refresh, setTimer } from './game/ui.js';
+import { drawMinimap } from './game/minimap.js';
+import { addInteractables, pickInteractable, showPrompt } from './game/interactables.js';
+import { setCount, initGauge, setGauge, showCount, areaTitle, showTitle, loadingText, openMenu, setTabs, closeMenu, menuKey, refresh, setTimer } from './game/ui.js';
 
 const persistent = new Set(scene.children);   // what exists before a world is built (sky, lights, player, effects…)
 const level = world.instante ? buildInstante() : buildLevel();
 hooks.strike = (actor, swing) => { swordStrike(actor, swing); if (trailer.on) trailer.sound('slice'); };
 hooks.aim = assistAttackYaw;
 hooks.respawn = respawnCombat;
-const propsReady = loadProps().catch(err => { console.error('props', err); if (trailerMode !== null) throw err; });
+loadingText('carregando árvores, ruínas e objetos…', 0.2);
+const propsReady = loadProps().then(() => loadingText('carregando o personagem…', 0.6)).catch(err => { console.error('props', err); if (trailerMode !== null) throw err; });
 let TOP = world.instante ? 12 : islands[islands.length - 1].y;   // O Instante has no climb: its atmosphere is fixed
 const worldVersion = () => `${WORLD_REVISION}.${islands.length}.${secrets.length}.${pickups.length}.${Math.round(TOP * 100)}`;
 function instanteLook() {   // the other side: its own title, no height gauge
@@ -58,10 +62,12 @@ function instanteLook() {   // the other side: its own title, no height gauge
 }
 if (world.instante) instanteLook();
 loadSave(worldVersion(), islands.length, pickups.length, -1, level.compatibleVersions);
-ruinsPuzzle.onSolved = () => {
-  save.ruins = true; persist(); unlock('ruins');
-  toast('O relicário despertou', 'Um fragmento de luz apareceu entre os espelhos.', 'DESCOBERTA');
-};
+// everything that offers an interact prompt registers a source here (see game/interactables.js)
+addInteractables(pos => {
+  if (world.instante) return instantePrompt();
+  return [];
+});
+const interactHere = () => pickInteractable(player.pos, player.yaw);
 initGauge(islands.map(i => i.y));
 
 // Crossing over (called from the black inside the horizon, see crossing.js): the journey is saved, its world taken
@@ -96,7 +102,6 @@ function applyRun() {
   for (let i = 0; i <= save.cp; i++) lightShrine(i);
   pickups.forEach((k, i) => { k.got = save.got.includes(i); k.g.visible = !k.got; k.g.scale.setScalar(1); k.anim = 0; });
   if (world.instante) { save.glide = true; applyInstanteRun(); }
-  setRuinsSolved(save.ruins);
   player.cp = save.cp; player.collected = save.got.length;
   summit.reached = save.done;
   game.restoration = restorationTarget(player.collected, save.done);
@@ -106,7 +111,6 @@ function applyRun() {
 }
 applyRun();
 const hasRun = () => save.cp > 0 || save.got.length > 0 || save.runT > 5;
-document.querySelector('#title .t-start').textContent = hasRun() ? 'Continuar' : 'Começar';
 
 const applyHud = () => { document.body.classList.toggle('nohud', !settings.hud); document.body.classList.toggle('notimer', !settings.timer); };
 applyHud(); applyShadows(); applyQuality(); cam.dist = settings.camDist;
@@ -129,6 +133,51 @@ function start() {
   setTimeout(() => areaTitle(player.cp, player.cp ? 'checkpoint' : ''), 1400);
   // Guidance stays attached to the current crossing, rather than disappearing before the player gets there.
 }
+// ------------------------------------------------------------ before the game: title → home menu → (first time: setup) → (new journey: intro) → play
+const root = () => (document.body.classList.contains('home') ? homeMenu() : pauseMenu());
+let introSkip = null;
+function openHome() { initAudio(); showTitle(false); homeMenu(); }
+function homeMenu() {
+  game.state = 'pause'; document.body.classList.add('home');
+  const run = hasRun();
+  openMenu('Acima da névoa', [
+    hint({ label: run ? 'Continuar' : 'Começar', kind: 'primary', act: begin }, run ? `Último santuário · ${NAMES[save.cp]}` : 'Uma luz para voltar'),
+    ...(run ? [hint({ label: 'Nova jornada', act: confirmHome }, 'Recomeça do início; recordes e descobertas ficam salvos')] : []),
+    { label: 'Configurações', kind: 'branch', act: settingsMenu },
+    { label: 'Créditos', kind: 'branch', act: creditsMenu },
+  ], run ? `${fmtTime(save.runT)}  ·  ${player.collected} / ${pickups.length}` : '', null, [], false, 'MENU INICIAL');
+}
+const confirmHome = () => openMenu('Nova jornada?', [
+  { label: 'Sim, recomeçar do início', kind: 'danger', act: () => { newRun(); applyRun(); begin(); } },
+  { label: 'Não', act: homeMenu },
+], 'O progresso desta jornada se perde. Recorde, conquistas, álbum e habilidades ficam.', homeMenu, [], false, 'NOVA JORNADA');
+const creditsMenu = () => openMenu('Créditos', [{ label: 'Voltar', act: homeMenu }], '', homeMenu, [
+  'Um jogo de Vitor, feito com Three.js e Vite',
+  'Trailer · música de Scott Buckley (CC BY 4.0)',
+  'Trailer · efeitos sonoros de Kenney (CC0)',
+], false, 'CRÉDITOS');
+const setupDone = () => { try { return localStorage.getItem('nevoa-setup') === '1'; } catch { return true; } };
+function setupMenu(next) {
+  if (!(navigator.hardwareConcurrency > 4)) { settings.quality = 1; saveSettings(); applyQuality(); }   // a modest machine starts on medium
+  openMenu('Antes de começar', [
+    hint(pick('Qualidade gráfica', 'quality', ['baixa', 'média', 'alta'], applyQuality), 'Escolhida pelo seu computador; baixa ajuda em máquinas mais fracas'),
+    num('Volume geral', 'volume', 0, 10),
+    hint(flag('Dicas de controle', 'tips'), 'Mostra os controles ao longo da primeira ilha'),
+    { label: 'Tudo certo', kind: 'primary', act: () => { try { localStorage.setItem('nevoa-setup', '1'); } catch { /* ignore */ } next(); } },
+  ], pad.connected ? 'Controle detectado · A pula, o analógico move' : 'Teclado e mouse · um controle é reconhecido assim que você o conectar', null,
+  ['Você pode mudar tudo isso depois, em Configurações.'], false, 'PRIMEIRA VEZ');
+}
+function begin() {
+  const go = () => { closeMenu(); document.body.classList.remove('home'); if (!world.instante && !hasRun()) intro(); else start(); };
+  setupDone() ? go() : setupMenu(go);
+}
+// opening scene on a new journey: four lines, one after the other; any confirm skips
+function intro() {
+  game.state = 'intro'; clearKeys();
+  const n = document.querySelector('#intro'), end = () => { clearTimeout(t); n.classList.remove('show'); introSkip = null; start(); }, t = setTimeout(end, 16000);
+  introSkip = end; n.classList.add('show');
+}
+
 function pause() {
   if (game.state !== 'play' || trailerMode !== null) return;   // a trailer render is never interrupted by a lost focus
   game.state = 'pause'; pausedAt = performance.now();
@@ -139,6 +188,7 @@ function pause() {
   showCount(true);
 }
 function resume() {
+  if (document.body.classList.contains('home')) return begin();
   stopFinaleCamera();
   document.body.classList.remove('paused');
   game.state = 'play'; capturing = null; setMapView(false);
@@ -179,14 +229,11 @@ instante.onEnd = () => {
   document.querySelector('#cine .cap').classList.add('show'); cutscene.done = true;
 };
 const crossOver = () => { location.href = worldUrl(false); };
-hooks.finale = () => { unlock('summit'); completeJourney(); };
+hooks.finale = () => completeJourney();
 // end of the journey: achievements, best time + ghost, then the end screen
 function completeJourney() {
   const t = save.runT, fair = !save.dirty;
   save.done = true;
-  if (fair && save.falls === 0) unlock('nofall');
-  if (fair && t < 480) unlock('fast');
-  if (game.day < 0.3) unlock('night');
   const best = fair && (save.best === null || t < save.best);
   if (best) { save.best = t; save.records[save.ver] = t; saveGhost(save.rec, t); }
   persist();
@@ -211,12 +258,10 @@ function endScreen(best) {
   openMenu('Acima da névoa', [
     { label: 'Continuar explorando', act: resume },
     { label: 'Nova jornada', act: () => { resume(); newJourney(); } },
-    { label: 'Explorar', kind: 'branch', act: () => exploreMenu(back) },
+    { label: 'Mapa', kind: 'branch', act: () => mapMenu(back) },
   ], 'O farol voltou a brilhar', resume, [
     `tempo  ${fmtTime(save.runT)}${save.dirty ? '  (menu de desenvolvedor usado: não vale recorde)' : best ? '  ·  novo recorde!' : save.best !== null ? `  ·  recorde ${fmtTime(save.best)}` : ''}`,
     `fragmentos de luz  ${player.collected} / ${pickups.length}   ·   quedas  ${save.falls}`,
-    `memórias encontradas  ${save.memories.length} / ${MEMORIES.length}`,
-    `conquistas  ${achCount()} / ${ACH.length}`,
   ], false, 'JORNADA CONCLUÍDA');
   showCount(true);
 }
@@ -226,21 +271,11 @@ const footer = () => `◆  ${player.collected} / ${pickups.length}   ·   ${fmtT
 function pauseMenu() {
   openMenu('Pausa', [
     hint({ label: 'Continuar', kind: 'primary', act: resume }, 'Voltar ao jogo'),
-    hint({ label: 'Modo foto', act: () => { resume(); enterPhoto(); } }, 'Fotografe os marcos para completar o álbum'),
-    hint({ label: 'Explorar', kind: 'branch', act: () => exploreMenu(pauseMenu) }, 'Mapa, álbum e conquistas'),
+    hint({ label: 'Modo foto', act: () => { resume(); enterPhoto(); } }, 'Câmera livre para salvar fotos do mundo'),
+    hint({ label: 'Mapa', kind: 'branch', act: () => mapMenu(pauseMenu) }, 'As ilhas que você já visitou'),
     hint({ label: 'Configurações', kind: 'branch', act: settingsMenu }, 'Jogabilidade, controles, gráficos, áudio e mundo'),
     hint({ label: 'Jornada', kind: 'branch', act: journeyMenu }, 'Voltar ao checkpoint ou começar uma nova jornada'),
-    hint({ label: 'Modo Deus', kind: 'branch', act: devMenu }, 'F2 · invencibilidade, voo, combate, teleporte e cheats'),
   ], footer(), resume, [NAMES[currentIsland()]], false, 'MENU DE PAUSA');
-}
-function exploreMenu(back) {
-  openMenu('Explorar', [
-    { label: 'Mapa', kind: 'branch', act: () => mapMenu(() => exploreMenu(back)) },
-    { label: 'Álbum de descobertas', kind: 'branch', act: () => albumMenu(() => exploreMenu(back)) },
-    { label: 'Memórias do farol', kind: 'branch', act: () => memoriesMenu(() => exploreMenu(back)) },
-    { label: 'Conquistas', kind: 'branch', act: () => achMenu(() => exploreMenu(back)) },
-    { label: 'Voltar', act: back },
-  ], footer(), back, [], false, 'EXPLORAÇÃO');
 }
 function journeyMenu() {
   openMenu('Jornada', [
@@ -253,15 +288,6 @@ const confirmNew = () => openMenu('Nova jornada?', [
   { label: 'Sim, recomeçar do início', kind: 'danger', act: () => { resume(); newJourney(); } },
   { label: 'Não', act: journeyMenu },
 ], 'O progresso desta jornada se perde. Recorde, conquistas, álbum e habilidades ficam.', journeyMenu, [], false, 'JORNADA');
-function memoriesMenu(back) {
-  const rows = MEMORIES.map(m => hint({ label: save.memories.includes(m.id) ? m.title : `◇ ${m.title}`,
-    act: () => openMenu(save.memories.includes(m.id) ? m.title : 'Uma memória na névoa', [{ label: 'Voltar', act: () => memoriesMenu(back) }],
-      save.memories.includes(m.id) ? m.effect : `Reúna ${m.at} fragmentos em uma jornada para descobrir esta memória.`,
-      () => memoriesMenu(back), [save.memories.includes(m.id) ? m.text : 'As centelhas guardam vozes de quem passou por aqui.'], false, 'MEMÓRIAS DO FAROL'),
-  }, save.memories.includes(m.id) ? m.effect : `Reúna ${m.at} fragmentos em uma jornada`));
-  openMenu('Memórias do farol', [...rows, { label: 'Voltar', act: back }], `${save.memories.length} / ${MEMORIES.length} memórias`, back,
-    ['Cada grupo de fragmentos devolve luz ao farol e abre o horizonte.'], false, 'EXPLORAÇÃO');
-}
 
 // the island you are on (or closest to)
 function currentIsland() {
@@ -288,21 +314,6 @@ function mapMenu(back = pauseMenu) {
 }
 function setMapView(on) { mapCam.on = game.mapView = on; document.body.classList.toggle('mapview', on); }
 function closeMap() { setMapView(false); mapBack(); }
-function achMenu(back) {
-  openMenu('Conquistas', [
-    ...ACH.map(([id, name, desc]) => hint({ label: name, val: () => (save.ach[id] ? '◆' : '·') }, desc)),
-    { label: 'Voltar', act: back },
-  ], `${achCount()} / ${ACH.length} conquistas`, back, [], false, 'EXPLORAÇÃO');
-}
-function albumMenu(back) {
-  const order = ['ninho', 'ruinas', 'moinho', 'bosque', 'whale', 'pedra', 'jardim', 'cidade', 'farol'];
-  const rows = [...landmarks].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)).map(s => hint({
-    label: save.album.includes(s.id) ? s.name : `◇ ${s.name}`,
-    val: () => save.album.includes(s.id) ? '◆' : '·',
-    preview: { src: save.album.includes(s.id) ? albumImage(s.id) : null, title: save.album.includes(s.id) ? s.name : 'Explore e enquadre este marco no modo foto' },
-  }, save.album.includes(s.id) ? 'Foto registrada no álbum' : 'No modo foto, centralize o marco e aperte Enter para fotografar'));
-  openMenu('Álbum de descobertas', [...rows, { label: 'Voltar', act: back }], '◆ foto registrada · ◇ por descobrir', back, [`${save.album.length} de ${landmarks.length} marcos fotografados`], false, 'EXPLORAÇÃO');
-}
 function bindKey(a, code) {
   const b = settings.binds, other = Object.keys(b).find(k => k !== a && b[k] === code);
   if (other) b[other] = b[a];   // swap, so no action is left without a key
@@ -336,8 +347,14 @@ const round = x => Math.round(x * 100) / 100;
 const hint = (item, text) => Object.assign(item, { hint: text });
 const num = (label, key, lo, hi, step = 1, after, obj = settings, fmt = v => v) => ({ label, val: () => fmt(obj[key]), frac: () => (obj[key] - lo) / (hi - lo), adj: d => { obj[key] = clamp(round(obj[key] + d * step), lo, hi); if (obj === settings) saveSettings(); after?.(); } });
 const flag = (label, key, after, obj = settings) => ({ label, val: () => (obj[key] ? 'sim' : 'não'), on: () => !!obj[key], adj: () => { obj[key] = !obj[key]; if (obj === settings) saveSettings(); after?.(); } });
-const pick = (label, key, list, after, obj = settings) => ({ label, val: () => list[obj[key]], adj: d => { obj[key] = (obj[key] + d + list.length) % list.length; if (obj === settings) saveSettings(); after?.(); } });
-const page = (title, rows) => openMenu(title, [...rows, { label: 'Voltar', act: settingsMenu }], footer(), settingsMenu, [], false, 'CONFIGURAÇÕES');
+const pick = (label, key, list, after, obj = settings) => ({ label, val: () => list[obj[key]], opts: list, idx: () => obj[key], set: k => { obj[key] = k; if (obj === settings) saveSettings(); after?.(); }, adj: d => { obj[key] = (obj[key] + d + list.length) % list.length; if (obj === settings) saveSettings(); after?.(); } });
+const section = label => ({ label, kind: 'section' });
+// settings pages share one CS-style screen: tabs on top, headed groups of rows, live preview in the world behind
+const TABS = [['Jogabilidade', () => gameplayMenu()], ['Gráficos', () => graphicsMenu()], ['Áudio', () => audioMenu()], ['Mundo', () => worldMenu()]];
+const page = (title, rows) => {
+  openMenu(title, [...rows, { label: 'Voltar', act: settingsMenu }], 'As mudanças valem na hora', settingsMenu, [], false, 'CONFIGURAÇÕES', true);
+  setTabs(TABS, TABS.findIndex(t => t[0] === title));
+};
 const applyAll = () => { applyHud(); applyShadows(); applyQuality(); cam.dist = settings.camDist; };
 const cheat = () => { save.dirty = true; persist(); };   // dev tools: this run no longer counts for the best time
 
@@ -348,29 +365,32 @@ function settingsMenu() {
     { label: 'Gráficos', kind: 'branch', act: graphicsMenu },
     { label: 'Áudio', kind: 'branch', act: audioMenu },
     { label: 'Mundo', kind: 'branch', act: worldMenu },
-    { label: 'Modo Deus', kind: 'branch', act: devMenu },
     hint({ label: 'Restaurar padrões', kind: 'muted', act: () => { resetSettings(); applyAll(); settingsMenu(); } }, 'Volta todas as configurações ao original, inclusive as teclas (o menu de desenvolvedor não é afetado)'),
-    { label: 'Voltar', act: pauseMenu },
-  ], footer(), pauseMenu, [], false, 'MENU DE PAUSA');
+    { label: 'Voltar', act: root },
+  ], footer(), root, [], false, document.body.classList.contains('home') ? 'MENU INICIAL' : 'MENU DE PAUSA');
 }
 const gameplayMenu = () => page('Jogabilidade', [
+  section('Câmera'),
   hint(num('Sensibilidade do mouse', 'sens', 1, 10), 'Velocidade de giro da câmera (mouse e analógico)'),
   flag('Inverter câmera', 'invert'),
   hint(flag('Primeira pessoa', 'firstPerson'), 'Também alterna com V (L3 no controle)'),
   hint(num('Distância da câmera', 'camDist', 4, 10, 0.5, () => { cam.dist = settings.camDist; }), 'Também dá para ajustar com a roda do mouse'),
+  section('Interface'),
   hint(flag('Dicas de controle', 'tips'), 'Mostra os controles ao começar'),
   hint(flag('Cronômetro', 'timer', applyHud), 'Tempo da jornada e recorde, no canto superior direito'),
   hint(flag('Fantasma do recorde', 'ghost'), 'Uma silhueta refaz o seu melhor percurso junto com você'),
 ]);
 const graphicsMenu = () => page('Gráficos', [
+  section('Geral'),
   hint(pick('Qualidade', 'quality', ['baixa', 'média', 'alta'], applyQuality), 'Resolução e brilho (bloom). Baixa ajuda em computadores fracos'),
   num('Campo de visão', 'fov', 50, 90, 5, applyQuality),
+  flag('Mostrar HUD', 'hud', applyHud),
+  flag('Mostrar FPS', 'fps'),
+  section('Qualidade avançada'),
   flag('Sombras', 'shadows', applyShadows),
   flag('Brilho (bloom)', 'bloom', applyQuality),
   pick('Partículas', 'particles', ['reduzidas', 'normais']),
   pick('Névoa', 'fog', ['leve', 'suave', 'normal', 'densa']),
-  flag('Mostrar HUD', 'hud', applyHud),
-  flag('Mostrar FPS', 'fps'),
 ]);
 const audioMenu = () => page('Áudio', [
   num('Volume geral', 'volume', 0, 10),
@@ -384,70 +404,59 @@ const worldMenu = () => page('Mundo', [
   hint(pick('Duração do dia', 'dayLen', ['2 min', '5 min', '10 min']), 'Quanto dura um dia completo, de manhã até a noite'),
 ]);
 function recoverHealth() {
-  cheat(); combat.hp = 3; combat.hurt = 0; combat.invulnerable = 1.5; refresh();
+  cheat(); combat.hp = 3; combat.hurt = 0; combat.invulnerable = 1.5;
 }
 function resetDeveloperCheats() {
   Object.assign(dev, { fly:false, flySpeed:14, safe:false, speed:1, gravity:1, jump:1, freezeTime:false, hour:9, forced:0, island:player.cp });
-  player.vel.set(0,0,0); forceWeather(0); devMenu();
+  player.vel.set(0,0,0); forceWeather(0);
 }
-const devMenu = () => openMenu('Modo Deus', [
-  hint(flag('Invencibilidade', 'safe', cheat, dev), 'Você não recebe dano; quedas retornam ao último chão seguro'),
-  hint(flag('Voo livre', 'fly', () => { cheat(); player.vel.set(0,0,0); }, dev), 'WASD move · Espaço sobe · Shift desce · atravessa obstáculos'),
-  hint({ label:'Recuperar vida', act:recoverHealth }, 'Restaura os três corações'),
-  hint({ label:'Combate', kind:'branch', act:devCombatMenu }, 'Recuperar vida, vencer ou reviver todos os inimigos'),
-  hint({ label:'Movimento e física', kind:'branch', act:devMoveMenu }, 'Velocidade, gravidade, pulo e planeio'),
-  hint({ label:'Mundo e teleporte', kind:'branch', act:devWorldMenu }, 'Ilhas, clima, horário e fragmentos'),
-  hint({ label:'Restaurar cheats', kind:'muted', act:resetDeveloperCheats }, 'Desliga voo e invencibilidade e restaura física e clima; habilidades aprendidas ficam'),
-  { label:'Voltar ao jogo', kind:'primary', act:resume },
-  { label:'Voltar', act:pauseMenu },
-], 'F2 abre este menu · usar cheats desativa o recorde desta jornada', pauseMenu, [], false, 'CHEATS DO DESENVOLVEDOR');
-const devPage = (title, rows) => openMenu(title, [...rows, { label:'Voltar', act:devMenu }], 'Usar cheats desativa o recorde desta jornada', devMenu, [], false, 'MODO DEUS');
-const devCombatMenu = () => devPage('Modo Deus · Combate', [
-  hint(flag('Invencibilidade', 'safe', cheat, dev), 'Bloqueia o dano dos inimigos e protege contra quedas'),
-  { label:'Recuperar vida', act:recoverHealth },
-  { label:'Vencer todos os inimigos', act:() => { cheat(); defeatAllEnemies(); refresh(); } },
-  { label:'Reviver todos os inimigos', act:() => { cheat(); reviveAllEnemies(); refresh(); } },
-]);
-const devMoveMenu = () => devPage('Modo Deus · Movimento', [
-  hint(flag('Voar', 'fly', cheat, dev), 'WASD move na direção da câmera, Espaço sobe, Shift desce. Sem colisão. Usar o menu de desenvolvedor invalida o recorde desta jornada'),
-  num('Velocidade de voo', 'flySpeed', 4, 60, 4, null, dev),
-  hint(flag('Invencibilidade / sem queda', 'safe', cheat, dev), 'Cair não reinicia: você volta ao último lugar em que pisou'),
-  num('Velocidade', 'speed', 0.5, 3, 0.5, cheat, dev, v => v + 'x'),
-  num('Gravidade', 'gravity', 0.25, 2, 0.25, cheat, dev, v => v + 'x'),
-  num('Força do pulo', 'jump', 0.5, 3, 0.25, cheat, dev, v => v + 'x'),
-  hint(flag('Planar liberado', 'glide', () => { cheat(); persist(); }, save), 'Normalmente aprendido ao chegar nas Ruínas do Vento'),
-]);
-const devWorldMenu = () => devPage('Modo Deus · Mundo', [
-  num('Hora do dia', 'hour', 0, 23, 1, () => { game.tod = ((dev.hour - 6) / 24 + 1) % 1; }, dev, v => v + ' h'),
-  flag('Congelar horário', 'freezeTime', null, dev),
-  pick('Forçar clima', 'forced', ['automático', 'limpo', 'névoa', 'chuva', 'tempestade'], () => forceWeather(dev.forced), dev),
-  num('Ilha de destino', 'island', 0, islands.length - 1, 1, null, dev, v => `${v + 1} · ${NAMES[v]}`),
-  hint({ label: 'Teleportar', act: () => { const k = dev.island; cheat(); player.cp = save.cp = k; for (let i = 0; i <= k; i++) lightShrine(i); spawnAt(k); resume(); } }, 'Vai para a ilha escolhida e define o checkpoint lá'),
-  hint({ label: 'Coletar tudo', act: () => { cheat(); collectAll(); } }, 'Pega todos os fragmentos de luz'),
-  hint({ label: 'Visitar píer da baleia', act: () => {
-    cheat(); player.cp = save.cp = whale.route.owner;
-    spawnAt(player.cp);
-    player.pos.set(whale.source.x, whale.source.y, whale.source.z);
-    areaTitle(player.cp, 'checkpoint');
-    cam.yaw = Math.atan2(-whale.route.nx, -whale.route.nz); cam.pitch = 0.35; cam.dist = 9;
-    cam.blend = 1; cam.follow.copy(player.pos); updateCamera(0, player);
-    for (let i = 0; i <= player.cp; i++) lightShrine(i);
-    resume();
-  } }, 'Vai ao píer da Baleia das Brumas. Invalida o recorde desta jornada'),
-  hint({ label: 'Prévia do buraco negro', act: () => {
-    cheat(); player.cp = save.cp = islands.length - 2; spawnAt(islands.length - 1);
-    for (let i = 0; i < islands.length - 1; i++) lightShrine(i);
-    cam.blend = 1; cam.follow.copy(player.pos); updateCamera(0, player); resume();
-  } }, 'Pisa na última ilha pela primeira vez e dispara a cutscene do buraco negro. Invalida o recorde desta jornada'),
-  hint({ label: 'Prévia do encerramento', act: () => {
-    cheat(); player.cp = save.cp = islands.length - 1;
-    spawnAt(player.cp); summit.reached = false; save.done = false;
-    player.pos.set(summit.pos.x, islands[player.cp].y + 0.45, summit.pos.z);
-    for (let i = 0; i <= player.cp; i++) lightShrine(i);
-    areaTitle(player.cp, 'checkpoint');
-    cam.blend = 1; cam.follow.copy(player.pos); updateCamera(0, player);
-    resume();
-  } }, 'Vai ao altar e conclui a jornada para testar a cena final. Invalida o recorde desta jornada'),
+// cheats live in a floating window (F2), not in the menus: the game keeps running while it is open
+const warp = k => { cheat(); player.cp = save.cp = k; for (let i = 0; i <= k; i++) lightShrine(i); };
+setCheats([
+  ['Geral', [
+    hint(flag('Invencibilidade', 'safe', cheat, dev), 'Você não recebe dano; quedas retornam ao último chão seguro'),
+    hint(flag('Voo livre', 'fly', () => { cheat(); player.vel.set(0, 0, 0); }, dev), 'WASD move · Espaço sobe · Shift desce · atravessa obstáculos'),
+    num('Velocidade de voo', 'flySpeed', 4, 60, 4, null, dev),
+    hint({ label: 'Recuperar vida', act: recoverHealth }, 'Restaura os três corações'),
+    hint({ label: 'Restaurar cheats', act: resetDeveloperCheats }, 'Desliga voo e invencibilidade e restaura física e clima; habilidades aprendidas ficam'),
+  ]],
+  ['Combate', [
+    { label: 'Vencer todos os inimigos', act: () => { cheat(); defeatAllEnemies(); } },
+    { label: 'Reviver todos os inimigos', act: () => { cheat(); reviveAllEnemies(); } },
+  ]],
+  ['Movimento', [
+    num('Velocidade', 'speed', 0.5, 3, 0.5, cheat, dev, v => v + 'x'),
+    num('Gravidade', 'gravity', 0.25, 2, 0.25, cheat, dev, v => v + 'x'),
+    num('Força do pulo', 'jump', 0.5, 3, 0.25, cheat, dev, v => v + 'x'),
+    hint(flag('Planar liberado', 'glide', () => { cheat(); persist(); }, save), 'Normalmente aprendido ao chegar nas Ruínas do Vento'),
+  ]],
+  ['Mundo', [
+    num('Hora do dia', 'hour', 0, 23, 1, () => { game.tod = ((dev.hour - 6) / 24 + 1) % 1; }, dev, v => v + ' h'),
+    flag('Congelar horário', 'freezeTime', null, dev),
+    pick('Forçar clima', 'forced', ['automático', 'limpo', 'névoa', 'chuva', 'tempestade'], () => forceWeather(dev.forced), dev),
+  ]],
+  ['Teleporte', [
+    num('Ilha de destino', 'island', 0, islands.length - 1, 1, null, dev, v => `${v + 1} · ${NAMES[v]}`),
+    hint({ label: 'Teleportar', act: () => { const k = dev.island; warp(k); spawnAt(k); } }, 'Vai para a ilha escolhida e define o checkpoint lá'),
+    hint({ label: 'Coletar tudo', act: () => { cheat(); collectAll(); } }, 'Pega todos os fragmentos de luz'),
+    hint({ label: 'Píer da baleia', act: () => {
+      warp(whale.route.owner); spawnAt(player.cp);
+      player.pos.set(whale.source.x, whale.source.y, whale.source.z);
+      areaTitle(player.cp, 'checkpoint');
+      cam.yaw = Math.atan2(-whale.route.nx, -whale.route.nz); cam.pitch = 0.35; cam.dist = 9;
+      cam.blend = 1; cam.follow.copy(player.pos); updateCamera(0, player);
+    } }, 'Vai ao píer da Baleia das Brumas'),
+    hint({ label: 'Prévia do buraco negro', act: () => {
+      warp(islands.length - 2); spawnAt(islands.length - 1);
+      cam.blend = 1; cam.follow.copy(player.pos); updateCamera(0, player);
+    } }, 'Pisa na última ilha pela primeira vez e dispara a cutscene do buraco negro'),
+    hint({ label: 'Prévia do encerramento', act: () => {
+      warp(islands.length - 1); spawnAt(player.cp); summit.reached = false; save.done = false;
+      player.pos.set(summit.pos.x, islands[player.cp].y + 0.45, summit.pos.z);
+      areaTitle(player.cp, 'checkpoint');
+      cam.blend = 1; cam.follow.copy(player.pos); updateCamera(0, player);
+    } }, 'Vai ao altar e conclui a jornada para testar a cena final'),
+  ]],
 ]);
 
 // ------------------------------------------------------------ input
@@ -459,12 +468,7 @@ addEventListener('keydown', e => {
     capturing = null; refresh();
     return;
   }
-  if (e.code === 'F2' && !e.repeat && (game.state === 'play' || game.state === 'pause')) {
-    e.preventDefault();
-    if (game.state === 'play') pause();
-    setMapView(false); devMenu();
-    return;
-  }
+  if (e.code === 'F2' && !e.repeat && (game.state === 'play' || cheatsOpen())) { e.preventDefault(); toggleCheats(); return; }
   if (game.state === 'pause') {
     if (e.code === 'Escape' && performance.now() - pausedAt < 400) return;   // same Esc that released the pointer
     return menuKey(e);
@@ -474,13 +478,18 @@ addEventListener('keydown', e => {
     return;
   }
   if (e.repeat) return;
+  if (game.state === 'tutorial') {
+    if (e.code === 'Escape' || e.code === settings.binds.tutorial) endTutorial();
+    return;
+  }
   if (game.state === 'ending') {
     if (e.code === 'Enter' || e.code === 'Escape' || e.code === settings.binds.pause) finishEnding();
     return;
   }
+  if (game.state === 'intro') { if (['Enter', 'Escape', 'Space'].includes(e.code)) introSkip?.(); return; }
   keys[e.code] = true;
   const b = settings.binds;
-  if (game.state === 'title' && (e.code === 'Enter' || e.code === b.jump)) return start();
+  if (game.state === 'title' && (e.code === 'Enter' || e.code === b.jump)) return openHome();
   if (game.state === 'play') {
     if (e.code === b.jump) player.jumpBuf = 0.14;
     if (e.code === b.attack && !world.instante) requestAttack();   // O Instante: held, it stops time (instante.js)
@@ -489,7 +498,8 @@ addEventListener('keydown', e => {
     if (e.code === b.dash) requestDash();
     if (e.code === 'Escape' || e.code === b.pause) pause();
     else if (e.code === b.photo) enterPhoto();
-    else if (e.code === b.interact && rotateRuinsMirror(player.pos)) tone([440, 587.33], { dur: 0.35, vol: 0.04, gap: 0.05, at: ruinsPuzzle.center });
+    else if (e.code === b.tutorial) startTutorial(tutorial);
+    else if (e.code === b.interact) interactHere()?.use?.();
   } else if (game.state === 'photo') {
     if (e.code === 'Escape' || e.code === b.photo) exitPhoto();
     else if (e.code === 'Enter') shot = true;
@@ -497,9 +507,10 @@ addEventListener('keydown', e => {
   }
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
-addEventListener('blur', () => { clearKeys(); if (game.state === 'photo') exitPhoto(); pause(); });
+addEventListener('blur', () => { clearKeys(); if (game.state === 'photo') exitPhoto(); endTutorial(); pause(); });
 canvas.addEventListener('mousedown', e => {
-  if (game.state === 'title') start();
+  if (game.state === 'title') openHome();
+  else if (game.state === 'intro') introSkip?.();
   else if (game.state === 'play' || game.state === 'photo') {
     if (game.state === 'play' && e.button === 0) { if (world.instante) instante.mouseStop = true; else requestAttack(); }
     if (!locked()) lock(); dragging = true;
@@ -526,7 +537,7 @@ addEventListener('wheel', e => {
 document.addEventListener('pointerlockchange', () => {
   if (locked()) return;
   if (game.state === 'photo') exitPhoto();
-  pause();
+  endTutorial(); pause();
 });
 
 // unplugging mid-game pauses instead of leaving the character running
@@ -537,7 +548,8 @@ const PAD_MENU = { up: 'ArrowUp', down: 'ArrowDown', left2: 'ArrowLeft', right2:
 function handlePad() {
   pollPad();
   const P = pad.pressed;
-  if (game.state === 'title') { if (P.jump || P.pause) start(); }
+  if (game.state === 'title') { if (P.jump || P.pause) openHome(); }
+  else if (game.state === 'intro') { if (P.jump || P.back2 || P.pause) introSkip?.(); }
   else if (game.state === 'play') {
     if (P.jump) player.jumpBuf = 0.14;
     if (P.attack && !world.instante) requestAttack();
@@ -545,7 +557,7 @@ function handlePad() {
     if (P.recenter) recenterCamera(player.yaw);
     if (P.view) toggleView();
     if (P.dash) requestDash();
-    if (P.pause) pause(); else if (P.photo) enterPhoto(); else if (P.back2 && rotateRuinsMirror(player.pos)) tone([440, 587.33], { dur: 0.35, vol: 0.04, gap: 0.05, at: ruinsPuzzle.center });
+    if (P.pause) pause(); else if (P.photo) enterPhoto(); else if (P.back2) interactHere()?.use?.();
   }
   else if (game.state === 'photo') { if (P.photo || P.back2 || P.pause) exitPhoto(); else if (P.jump) shot = true; }
   else if (game.state === 'ending') { if (P.jump || P.back2 || P.pause) finishEnding(); }
@@ -562,7 +574,7 @@ import('three/addons/loaders/GLTFLoader.js')
     const loader = new GLTFLoader();
     const gltf = await loader.loadAsync(characterUrl);
     const fbx = prepareCharacter(gltf.scene, gltf.animations);
-    attachCharacter(fbx); initGhost(fbx);
+    attachCharacter(fbx); initGhost(fbx); initTutorial(fbx);
     buildCombat(fbx, receiveHit, () => startRespawn(), world.instante ? [] : undefined);
     respawnCombat(player); loadingText(null);
     if (trailerMode !== null) { await propsReady; await trailer.init({ tick, clip: trailerMode }); } else { game.state = 'title'; showTitle(true); }
@@ -570,25 +582,15 @@ import('three/addons/loaders/GLTFLoader.js')
   .catch(err => { console.error(err); loadingText('não foi possível carregar o personagem'); });
 
 function saveShot() {
-  const target = photoTarget(camera, landmarks, save.album);
   canvas.toBlob(b => {
     if (!b) return;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(b); a.download = `acima-da-nevoa-${Date.now()}.png`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    if (target && mark('album', target.id)) {
-      storeAlbumImage(target.id, b);
-      photoNotice = `◆ ${target.name} registrado no álbum · ${save.album.length}/${landmarks.length}`;
-      photoNoticeUntil = performance.now() + 3500;
-      tone([523.25, 659.25, 783.99], { dur: 0.9, vol: 0.045, gap: 0.08 });
-      if (save.album.length === landmarks.length) unlock('album');
-    } else {
-      photoNotice = 'Foto salva · centralize um marco para registrá-lo no álbum';
-      photoNoticeUntil = performance.now() + 2800;
-    }
+    photoNotice = 'Foto salva';
+    photoNoticeUntil = performance.now() + 2000;
   });
   grade.uniforms.uFade.value = 0.6;   // a soft flash as the shutter
-  unlock('photo');
 }
 
 // ------------------------------------------------------------ loop
@@ -623,18 +625,14 @@ function tick(dt) {
   updateGhost(save.done || game.state === 'title' ? null : ghost, save.runT, playing ? dt : 0, player.pos);
   updateCamera(dt, player);
   setPlayerVisible(!cam.first || game.state !== 'play');
+  updateTutorial(dt);
   if (game.state === 'ending' && finaleCam.t >= 8) finishEnding();
   updateGuide(dt, player, save, world.instante ? instanteGoal() : null);
   if (!paused && !photo && !world.instante && !trailer.on) game.restoration = damp(game.restoration, restorationTarget(player.collected, save.done), 0.65, dt);   // the trailer sets it per shot
-  const interact = document.querySelector('#interact');
-  const mirror = playing && nearestRuinsMirror(player.pos), act = world.instante ? instantePrompt() : mirror && { act: 'interact', text: 'girar espelho para o cristal central' };
-  interact.classList.toggle('show', !!act);
-  if (act) { const html = `${cap(act.act)}${act.text}`; if (interact.innerHTML !== html) interact.innerHTML = html; }
+  showPrompt(playing ? interactHere() : null, player.pos);
   if (photo) {
-    const target = photoTarget(camera, landmarks, save.album);
     document.querySelector('#photohint').textContent = performance.now() < photoNoticeUntil ? photoNotice
-      : target ? `◆ ${target.name} no enquadramento · Enter fotografar · Esc sair`
-        : 'WASD mover · Espaço/Shift subir/descer · mouse olhar · roda zoom · [ ] horário · Enter salvar foto · H esconder dica · Esc sair';
+      : 'WASD mover · Espaço/Shift subir/descer · mouse olhar · roda zoom · [ ] horário · Enter salvar foto · H esconder dica · Esc sair';
   }
   if (playing || paused) setGauge(player.pos.y, player.cp);
   if (world.instante) animateCore(t, wdt, player.cp, !paused);
@@ -659,6 +657,7 @@ function tick(dt) {
   if (trailer.on) trailer.post();   // a trailer shot may take the camera back from the cutscene
   if (!trailer.quick) composer.render();   // the trailer seeks silently between shots
   if (shot) { shot = false; saveShot(); }
+  if (playing && !world.instante) drawMinimap(camera, player);
   if (mapCam.on) drawMapOverlay(mapCanvas, camera, player, mapCam.focus, t);
   fps.n++; fps.t += dt;
   if (fps.t > 0.5) { fps.el.textContent = settings.fps ? Math.round(fps.n / fps.t) + ' fps' : ''; fps.n = 0; fps.t = 0; }

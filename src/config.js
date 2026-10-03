@@ -18,7 +18,7 @@ export const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X
 export const TIMES = ['automático', 'manhã', 'meio-dia', 'pôr do sol', 'noite'], TIME_TOD = [null, 0.08, 0.25, 0.5, 0.75];   // fixed times of day
 export const FOGS = [0.3, 0.65, 1, 1.5], DAYS = [120, 300, 600];   // fog density multipliers / day lengths in seconds
 // rebindable keys (KeyboardEvent.code); arrows always work for moving as well
-export const DEFAULT_BINDS = { forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', attack: 'KeyJ', equip: 'KeyC', interact: 'KeyR', camLeft: 'KeyQ', camRight: 'KeyE', view: 'KeyV', dash: 'ShiftLeft', photo: 'KeyF', pause: 'KeyP' };
+export const DEFAULT_BINDS = { forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', attack: 'KeyJ', equip: 'KeyC', interact: 'KeyR', camLeft: 'KeyQ', camRight: 'KeyE', view: 'KeyV', dash: 'ShiftLeft', photo: 'KeyF', pause: 'KeyP', tutorial: 'KeyB' };
 const DEFAULTS = {
   sens: 5, invert: false, firstPerson: false, camDist: 6.6, tips: true, timer: true, ghost: true,             // gameplay
   quality: 2, fov: 60, shadows: true, bloom: true, particles: 1, fog: 2, hud: true, fps: false,   // graphics (fog: index into FOGS)

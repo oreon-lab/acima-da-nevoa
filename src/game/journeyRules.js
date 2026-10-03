@@ -1,12 +1,9 @@
 // These rules have no renderer or storage dependencies: save loading and live play share them.
-export const MEMORIES = [
-  { id: 'spark', at: 5, title: 'A primeira centelha', text: 'Alguém acendeu estas lanternas para que ninguém atravessasse a névoa sozinho.', effect: 'As lanternas ganham força. O farol recebe sua primeira centelha.' },
-  { id: 'wind', at: 12, title: 'O caminho do vento', text: 'Quando as pontes caíram, aprendemos a confiar no vento. O caminho continuava lá.', effect: 'Os anéis do farol despertam. A névoa começa a ceder.' },
-  { id: 'home', at: 24, title: 'Uma luz para voltar', text: 'O farol não marcava o fim da viagem. Guardava uma luz para quem ainda procurava o caminho de casa.', effect: 'O farol reúne sua luz. O horizonte fica mais claro.' },
-];
+// light gathered restores the lighthouse in stages: the count each stage needs
+export const LIGHT_STAGES = [5, 12, 24];
 
-export const lightStage = count => MEMORIES.filter(m => count >= m.at).length;
-export const nextMemory = count => MEMORIES.find(m => count < m.at) ?? null;
+export const lightStage = count => LIGHT_STAGES.filter(at => count >= at).length;
+export const nextStage = count => LIGHT_STAGES.find(at => count < at) ?? null;
 export const restorationTarget = (count, done) => done ? 1 : lightStage(count) * 0.2;
 export const canCollect = k => !k.got && k.available !== false && k.g.visible;
 

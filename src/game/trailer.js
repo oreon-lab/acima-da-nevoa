@@ -32,20 +32,20 @@ body.trailer { cursor: none; background: #000; }
 #tr { position: fixed; inset: 0; pointer-events: none; font-family: Poppins, sans-serif; color: #f4efe3; }
 #tr .layer { position: absolute; inset: 0; opacity: 0; }
 #tr .black { background: #000; } #tr .white { background: #fff8ec; }
-#tr .shade { background: linear-gradient(rgba(8,18,28,.42), transparent 26%, transparent 70%, rgba(8,18,28,.5)); opacity: 1; }
+#tr .shade { background: radial-gradient(ellipse 85% 80% at 50% 48%, transparent 60%, rgba(6,12,20,.32)), linear-gradient(rgba(8,18,28,.42), transparent 26%, transparent 64%, rgba(8,18,28,.62)); opacity: 1; }
 #tr .card { background: #000; display: grid; place-items: center; text-align: center; }
-#tr .cap { position: absolute; left: 0; right: 0; opacity: 0; text-align: center; text-shadow: 0 2px 4px #061016, 0 0 18px #061016; }
+#tr .cap { position: absolute; left: 0; right: 0; opacity: 0; text-align: center; text-shadow: 0 1px 2px #061016, 0 2px 10px rgba(6,16,22,.9), 0 0 32px rgba(6,16,22,.75); }
 #tr::before, #tr::after { content: ''; position: absolute; left: 0; right: 0; height: 12.8%; background: #000; z-index: 2; }
 #tr::before { top: 0; } #tr::after { bottom: 0; }
 #tr .k { font-size: 1.05vw; font-weight: 500; letter-spacing: .15em; color: #ffd58a; }
-#tr .l { font-size: 2.6vw; font-weight: 300; letter-spacing: .02em; line-height: 1.3; }
+#tr .l { font-size: 3vw; font-weight: 400; letter-spacing: .03em; line-height: 1.3; }
 #tr .card .l { font-size: 2.6vw; letter-spacing: .1em; }
 #tr .s { font-size: 1.2vw; font-weight: 400; letter-spacing: .08em; color: rgba(244,239,227,.8); margin-top: 1.2em; }
 #tr .rule { display: flex; align-items: center; justify-content: center; gap: 1vw; color: #ffd58a; font-size: .6vw; margin: 1.1vw 0 1vw; }
 #tr .rule i { width: 9vw; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,226,170,.8)); }
 #tr .rule i:last-child { transform: scaleX(-1); }
 #tr svg.em { width: 3.6vw; height: 3.6vw; color: #ffd58a; filter: drop-shadow(0 0 12px rgba(255,213,138,.45)); }
-#tr .a { font-size: 1.4vw; font-weight: 500; letter-spacing: .7em; padding-left: .7em; color: #ffd58a; text-transform: uppercase; margin-top: 1.1vw; }
+#tr .a { font-size: 2.2vw; font-weight: 500; letter-spacing: .7em; padding-left: .7em; color: #ffd58a; text-transform: uppercase; margin-top: 1.1vw; }
 #tr .b { font-size: 10vw; font-weight: 200; letter-spacing: .04em; line-height: 1; text-shadow: 0 0 60px rgba(255,213,138,.28), 0 2px 4px rgba(6,14,22,.7); }
 `;
 const ui = {};
@@ -83,7 +83,7 @@ function updateOverlay(sh, o) {
 let clip = null, shot = null, tickFn = null;
 const soundEvents = [];
 trailer.sound = kind => {
-  if (shot && shot.actor !== false && !shot.card) soundEvents.push({ kind, at: shot.at + trailer.o });
+  if (shot && shot.actor !== false && !shot.card) soundEvents.push({ kind, at: shot.at + trailer.o, floor: shot.floor ?? 'grass' });
 };
 trailerSound.emit = kind => trailer.sound(kind);
 

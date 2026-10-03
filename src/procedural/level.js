@@ -6,7 +6,7 @@ import { scene } from '../core.js';
 import { V3, TAU, clamp, lerp, rnd, rand, pick, reseed } from '../utils.js';
 import { worldMat } from './materials.js';
 import { rockMass, shapeH, shapeAt, palette, islandColor, P_ISLAND, P_STONE } from './geometry.js';
-import { islands, secrets, pickups, landmarks, crossings, worldGeos, summit, counts, pushGeo, clearOf, freeSpot, buildGrid } from './world.js';
+import { islands, secrets, pickups, crossings, worldGeos, summit, counts, pushGeo, clearOf, freeSpot, buildGrid } from './world.js';
 import { COURSE, WORLD_REVISION } from './course.js';
 import { buildWhaleExcursion } from './objects/whale.js';
 import { addRouteMarks } from './objects/routeMarks.js';
@@ -325,11 +325,6 @@ export function buildLevel() {
 
   for (const is of islands) {
     decorate(is);
-    if ([0, 8, 9, 10].includes(is.idx)) {
-      const names = { 0: ['ninho', 'Ninho da Névoa'], 8: ['jardim', 'Jardim das Brumas'], 9: ['cidade', 'Coroa de Pedra'], 10: ['farol', 'Farol Silencioso'] };
-      const [id, name] = names[is.idx];
-      landmarks.push({ id, name, x: is.x, y: is.y + (is.summit ? 3.3 : 1.5), z: is.z });
-    }
   }
   for (const s of secrets) if (s.kind === 'islet') decorateIslet(s);
   const compatibleVersion = `${WORLD_REVISION}.${islands.length}.${secrets.length}.${pickups.length}.${Math.round(islands.at(-1).y * 100)}`;

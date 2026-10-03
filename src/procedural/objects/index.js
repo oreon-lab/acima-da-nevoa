@@ -7,7 +7,6 @@ import { updateCampfires } from './campfire.js';
 import { updateCrystals } from './crystals.js';
 import { updatePhase } from './phase.js';
 import { updateBridges } from './bridge.js';
-import { updateRuinsPuzzle } from './ruinsPuzzle.js';
 import { updateLanterns } from './lantern.js';
 
 export { addIsland, addIslet } from './island.js';
@@ -16,7 +15,6 @@ export { addLantern } from './lantern.js';
 export { addPhasePlatform } from './phase.js';
 export { addBridge } from './bridge.js';
 export { addProp, loadProps } from './props.js';
-export { addRuinsPuzzle, ruinsPuzzle, setRuinsSolved, nearestRuinsMirror, rotateRuinsMirror } from './ruinsPuzzle.js';
 export { addPlatform } from './platform.js';
 export { addSpire } from './spire.js';
 export { addAltar } from './altar.js';
@@ -58,7 +56,6 @@ export function animateObjects(t, dt, cp, emit, playerPosition) {
   updateCrystals();
   updatePhase(t, playerPosition);
   updateBridges(cp, dt);
-  updateRuinsPuzzle(t);
   updateLanterns();
 }
 // O Instante only has fragments and checkpoints of these (the journey's own objects are gone once you cross over)

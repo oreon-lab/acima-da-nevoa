@@ -2,7 +2,7 @@
 import { makeWhale } from './whaleModel.js';
 import { scene } from '../../core.js';
 import { V3, TAU } from '../../utils.js';
-import { islands, secrets, landmarks, colliders, movers, pickups, addCol, clearOf } from '../world.js';
+import { islands, secrets, colliders, movers, pickups, addCol, clearOf } from '../world.js';
 import { shapeAt } from '../geometry.js';
 import { addPlatform } from './platform.js';
 import { addIslet } from './island.js';
@@ -88,7 +88,7 @@ export function buildWhaleExcursion() {
         else cargo.pickup.g.position.y += deck.mover.delta.y;
         cargo.pickup.base = point.y;
       }
-      const point = carrierPoint(p, 0, 1, 0); Object.assign(whale.landmark, point);
+      const point = carrierPoint(p, 0, 1, 0);
     } };
   whale.deck = deck; movers.push(deck);
   for (const trunk of built.trunks) {
@@ -101,8 +101,6 @@ export function buildWhaleExcursion() {
     whale.cargo.push({ local, pickup: pickups.at(-1) });
   }
   addPickup(sanctuary.x, sanctuary.y + 1.1, sanctuary.z);
-  whale.landmark = { id: 'whale', name: 'A Baleia das Brumas', x: pose.x, y: pose.y + 1, z: pose.z };
-  landmarks.push(whale.landmark);
   return whale;
 }
 

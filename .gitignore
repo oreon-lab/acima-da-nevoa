@@ -25,3 +25,9 @@ trailer/audio/kenney-*/Audio/*
 !trailer/audio/kenney-impact/Audio/footstep_grass_002.ogg
 !trailer/audio/kenney-impact/Audio/impactBell_heavy_000.ogg
 !trailer/audio/kenney-impact/Audio/impactMetal_heavy_000.ogg
+trailer/review-v4/
+trailer/audio/synth/
+!trailer/audio/kenney-impact/Audio/footstep_grass_003.ogg
+!trailer/audio/kenney-impact/Audio/footstep_grass_004.ogg
+!trailer/audio/kenney-impact/Audio/footstep_wood_00*.ogg
+!trailer/audio/kenney-impact/Audio/impactPunch_heavy_000.ogg

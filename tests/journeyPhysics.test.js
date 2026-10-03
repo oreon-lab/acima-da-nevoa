@@ -6,7 +6,7 @@ const storage = installHeadlessPresentation();
 const { buildLevel } = await import('../src/procedural/level.js');
 const world = await import('../src/procedural/world.js');
 const { player, spawnAt, updatePlayer, fade } = await import('../src/game/player.js');
-const { setRuinsSolved, ruinsPuzzle, rotateRuinsMirror, animateObjects } = await import('../src/procedural/objects/index.js');
+const { animateObjects } = await import('../src/procedural/objects/index.js');
 const { save, loadSave, newRun } = await import('../src/game/progress.js');
 const { keys, game } = await import('../src/core.js');
 const { settings, dev } = await import('../src/config.js');
@@ -53,32 +53,13 @@ function jumpBetween(from, target, owner, fraction = 0.8, wind = false) {
   return false;
 }
 
-test('the generated course has eleven ascending islands, broad practice landings and enough memory rewards', () => {
+test('the generated course has eleven ascending islands, broad practice landings and enough light fragments', () => {
   assert.equal(world.islands.length, 11);
   assert.equal(world.crossings.length, 10);
   world.islands.slice(1).forEach((is, i) => assert.ok(is.y > world.islands[i].y));
   assert.ok(world.crossings[3].steps.some(c => c.r >= 2.7));
   assert.ok(world.pickups.length >= 24);
   assert.ok(world.crossings.at(-1).steps.every(c => !c.climb));
-});
-
-test('a real jump cannot collect the unsolved mirror reward; solving and reloading releases it', () => {
-  resetAt(3); setRuinsSolved(false);
-  const k = ruinsPuzzle.reward;
-  player.pos.set(k.g.position.x, world.islands[3].y, k.g.position.z);
-  player.ground = world.islands[3].col;
-  keys[settings.binds.jump] = true; player.jumpBuf = 0.14;
-  for (let i = 0; i < 80; i++) step();
-  assert.equal(k.got, false); assert.equal(k.available, false);
-  for (const m of ruinsPuzzle.mirrors) while (m.dir !== m.target) rotateRuinsMirror({ x: m.x, y: m.y, z: m.z });
-  assert.equal(ruinsPuzzle.solved, true); assert.equal(k.available, true);
-  setRuinsSolved(true);
-  assert.equal(k.g.visible, true);
-  resetAt(3);
-  player.pos.set(k.g.position.x, world.islands[3].y, k.g.position.z);
-  keys[settings.binds.jump] = true; player.jumpBuf = 0.14;
-  for (let i = 0; i < 80; i++) step();
-  assert.equal(k.got, true);
 });
 
 test('phase stones stay solid while the player crosses through a day/night change', () => {
@@ -194,12 +175,12 @@ test('the restored bridge can be walked from its first stone to its far landing'
 
 test('a layout update keeps permanent discoveries and the old record, but starts a compatible run', () => {
   newRun();
-  storage.set('nevoa-save', JSON.stringify({ ver: 'old-world', cp: 7, got: [1, 2], runT: 30, best: 320, glide: true, memories: ['spark'], album: ['ninho'], ach: { photo: 1 } }));
+  storage.set('nevoa-save', JSON.stringify({ ver: 'old-world', cp: 7, got: [1, 2], runT: 30, best: 320, glide: true, visited: ['i1'] }));
   loadSave('new-world', 11, 37);
   assert.equal(save.cp, 0); assert.deepEqual(save.got, []);
   assert.equal(save.best, null); assert.equal(save.records['old-world'], 320);
-  assert.equal(save.glide, true); assert.deepEqual(save.memories, ['spark']); assert.deepEqual(save.album, ['ninho']);
-  newRun(); assert.deepEqual(save.memories, ['spark']);
+  assert.equal(save.glide, true); assert.deepEqual(save.visited, ['i1']);
+  newRun(); assert.deepEqual(save.visited, ['i1']);
 });
 
 test('the whale piers, back and sanctuary can be reached with ordinary jumps in both directions', () => {
@@ -230,7 +211,7 @@ test('the rotating whale carries the actual player through its entire circuit wi
     assert.ok(Math.hypot(player.pos.x - expected.x, player.pos.z - expected.z) < 0.02);
     assert.ok(Math.abs(player.pos.y - expected.y) < 0.01);
   }
-  assert.ok(save.ach.whale);
+
 });
 
 test('fragments stay attached to the moving back and can be collected during the voyage', () => {

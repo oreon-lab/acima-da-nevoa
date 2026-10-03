@@ -472,8 +472,13 @@ export function instanteGoal() {
 export function instantePrompt() {
   if (game.state !== 'play' || instante.end) return null;
   const c = _v.set(player.pos.x, player.pos.y + 0.8, player.pos.z);
-  if (player.cp >= STOP_FROM && !instante.stopping && (nearWater(c) || nearStream(c))) return { act: 'attack', text: 'parar o tempo (segure)' };
-  if (!instante.rewinding && instante.pieces.some(p => p.tau > 0.03 && !p.ride && nearYou(p, c))) return { act: 'interact', text: 'rebobinar o tempo (segure)' };
+  if (player.cp >= STOP_FROM && !instante.stopping) {
+    const w = instante.water.find(w => w.p.distanceTo(c) < 3.2);
+    if (w) return { act: 'attack', at: { x: w.p.x, y: w.p.y + 1.2, z: w.p.z }, text: 'parar o tempo (segure)' };
+    if (nearStream(c)) return { act: 'attack', at: { x: c.x, y: c.y + 1.4, z: c.z }, text: 'parar o tempo (segure)' };
+  }
+  const piece = !instante.rewinding && instante.pieces.find(p => p.tau > 0.03 && !p.ride && nearYou(p, c));
+  if (piece) { const q = piece.mesh.position; return { act: 'interact', at: { x: q.x, y: q.y + piece.r * 0.5 + 1, z: q.z }, text: 'rebobinar o tempo (segure)' }; }
   return null;
 }
 

@@ -1,4 +1,4 @@
-# Fontes do áudio — trailer v3
+# Fontes do áudio — trailer v4
 
 Baixado em 1 de outubro de 2026. O trailer usa trechos editados, com cortes, fades, ajuste de volume e mixagem com efeitos.
 
@@ -18,6 +18,6 @@ Licença: [Creative Commons Attribution 4.0](https://creativecommons.org/license
 Licença: [CC0](https://creativecommons.org/publicdomain/zero/1.0/). Os pacotes incluem seus arquivos `License.txt`.
 
 - [RPG Audio](https://kenney.nl/assets/rpg-audio): cloth1.ogg, drawKnife2.ogg e knifeSlice2.ogg. [Pacote original](https://kenney.nl/media/pages/assets/rpg-audio/8e99002d76-1677590336/kenney_rpg-audio.zip).
-- [Impact Sounds](https://kenney.nl/assets/impact-sounds): footstep_concrete_002.ogg, footstep_grass_000.ogg a footstep_grass_002.ogg, impactMetal_heavy_000.ogg e impactBell_heavy_000.ogg. [Pacote original](https://kenney.nl/media/pages/assets/impact-sounds/87b4ddecda-1677589768/kenney_impact-sounds.zip).
+- [Impact Sounds](https://kenney.nl/assets/impact-sounds): footstep_concrete_002.ogg, footstep_grass_000.ogg a footstep_grass_004.ogg, footstep_wood_000.ogg a footstep_wood_004.ogg, impactMetal_heavy_000.ogg, impactBell_heavy_000.ogg e impactPunch_heavy_000.ogg. [Pacote original](https://kenney.nl/media/pages/assets/impact-sounds/87b4ddecda-1677589768/kenney_impact-sounds.zip).
 
 Arquivos dos pacotes ficam em `kenney-rpg/Audio/` e `kenney-impact/Audio/`.

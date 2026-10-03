@@ -28,13 +28,12 @@ export function streamAt(x, y, z) {
 export const updrafts = [];   // wind vents { x, y, z, r, h }
 export const colliders = [], islands = [], worldGeos = [], movers = [], floaters = [], pickups = [], shrines = [], grassI = [], flowerI = [];
 export const secrets = [];    // hidden islets at the end of some detours { x, y, z, R, col }
-export const landmarks = [];  // named subjects for the discovery photo album
 export const crossings = [];  // main-route start, end and walkable steps, used by contextual guidance
 export const summit = { pos: new V3(), reached: false };
 export const counts = { detours: 0 };
 // forget the generated world (crossing over to O Instante rebuilds into these same arrays)
 export function clearWorld() {
-  for (const a of [ponds, streams, updrafts, colliders, islands, worldGeos, movers, floaters, pickups, shrines, grassI, flowerI, secrets, landmarks, crossings]) a.length = 0;
+  for (const a of [ponds, streams, updrafts, colliders, islands, worldGeos, movers, floaters, pickups, shrines, grassI, flowerI, secrets, crossings]) a.length = 0;
   summit.reached = false; summit.pos.set(0, -1e4, 0); counts.detours = 0;
   buildGrid();
 }

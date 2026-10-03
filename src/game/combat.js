@@ -188,10 +188,10 @@ export function updateCombatHud() {
   const el = document.querySelector('#combat');
   if (!el) return;
   const status = combat.hp <= 0 ? 'Voltando ao checkpoint…' : combat.hurt > 0 ? 'Atingido' : combat.weaponTransition ? (combat.weaponTransition.toArmed ? 'Sacando espadas' : 'Guardando nas costas') : combat.attack ? 'Golpe duplo' : combat.armed ? 'Guarda de combate' : 'Espadas nas costas';
-  const controls = `${cap('attack')}atacar${cap('equip')}sacar / guardar`;
-  const hearts = Array.from({ length: 3 }, (_, i) => `<i${i < combat.hp ? ' class="on"' : ''}>♥</i>`).join('');
-  const kills = enemies.length ? `<div class="kills">Guardas vencidos ${combat.defeated} / ${enemies.length}</div>` : '';   // O Instante has no guards
-  const text = `<div class="hp">${hearts}</div><div class="st">${status}</div>${kills}<div class="keys">${controls}</div>`;
+  const skill = (a, glyph) => `<span class="sk"><i>${glyph}</i>${cap(a)}</span>`;
+  const controls = skill('attack', '✦') + skill('equip', combat.armed ? '◈' : '◇') + skill('dash', '≫');
+  const kills = enemies.length ? `<div class="kills">${combat.defeated} / ${enemies.length}</div>` : '';   // O Instante has no guards
+  const text = `<div class="hpbar"><b style="width:${Math.max(0, combat.hp) / 3 * 100}%"></b><span>${Math.max(0, combat.hp)} / 3</span></div><div class="st">${status}</div>${kills}<div class="keys">${controls}</div>`;
   if (text !== hudText) { el.innerHTML = hudText = text; }
   el.classList.toggle('hurt', combat.hurt > 0);
   el.style.setProperty('--recovery', combat.attack ? `${1 - Math.min(1, combat.attack.time / combat.attack.duration)}` : '0');

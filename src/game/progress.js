@@ -1,7 +1,5 @@
 // Saved progress (localStorage): the current run (checkpoint, fragments, time, ghost recording) and things kept
 // across runs (best time + its ghost, learned abilities, achievements and places found).
-import { toast } from './ui.js';
-import { tone } from './audio.js';
 import { world, trailerMode } from '../mode.js';
 
 // Isolated saves for local visual QA; never read or write a player's journey while previewing tests.
@@ -10,27 +8,12 @@ const qa = trailerMode !== null || (import.meta.env?.DEV && new URLSearchParams(
 let KEY, GKEY;
 const useKeys = instante => { const base = instante ? 'nevoa-instante' : 'nevoa'; KEY = qa ? `${base}-qa-save` : `${base}-save`; GKEY = qa ? `${base}-qa-ghost` : `${base}-ghost`; };
 useKeys(world.instante);
-const RUN = () => ({ cp: 0, got: [], runT: 0, falls: 0, done: false, dirty: false, ruins: false, rec: [], echoes: [] });   // echoes: O Instante's stopped clocks
-const KEPT = () => ({ glide: false, best: null, records: {}, memories: [], ach: {}, visited: [], detours: [], album: [] });
+const RUN = () => ({ cp: 0, got: [], runT: 0, falls: 0, done: false, dirty: false, rec: [], echoes: [] });   // echoes: O Instante's stopped clocks
+const KEPT = () => ({ glide: false, best: null, records: {}, visited: [], detours: [] });
 export const save = { ver: '', ...RUN(), ...KEPT() };
 export let ghost = null;   // { ver, t, rec } of the best run
 // crossing over in the same page: from here on read and write O Instante's save (the journey's is saved first)
 export function useInstanteSave() { persist(); useKeys(true); Object.assign(save, RUN(), KEPT()); ghost = null; }
-
-export const ACH = [
-  ['summit', 'Acima da névoa', 'Chegar ao farol'],
-  ['shards', 'Colecionador de luz', 'Pegar todos os fragmentos de luz'],
-  ['islands', 'Cartógrafo', 'Pisar em todas as ilhas e em todos os lugares secretos'],
-  ['detours', 'Fora da trilha', 'Chegar ao fim de todos os desvios'],
-  ['glide', 'Asas de vento', 'Planar 25 m de uma só vez'],
-  ['nofall', 'Pés firmes', 'Chegar ao farol sem cair nenhuma vez'],
-  ['fast', 'Mais rápido que a névoa', 'Chegar ao farol em menos de 8 minutos'],
-  ['night', 'Vigília', 'Chegar ao farol durante a noite'],
-  ['photo', 'Olhar atento', 'Tirar uma foto no modo foto'],
-  ['ruins', 'Luz entre as ruínas', 'Alinhar os três espelhos do vento'],
-  ['album', 'Memórias da névoa', 'Fotografar todos os marcos do álbum'],
-  ['whale', 'Carona nas brumas', 'Embarcar na ilha-baleia'],
-];
 
 // ver identifies the generated world; a run saved for a different world is dropped (kept stuff survives)
 export function loadSave(ver, nIslands, nPickups, addedPickupIndex = -1, compatibleVersions = []) {
@@ -47,18 +30,14 @@ export function loadSave(ver, nIslands, nPickups, addedPickupIndex = -1, compati
       // Times belong to a route; changing the course keeps the old record without comparing unlike runs.
       const compatible = compatibleVersions.includes(s.ver);
       save.best = Number.isFinite(save.records[ver]) ? save.records[ver] : ((s.ver === legacyVer || compatible) && Number.isFinite(s.best) ? s.best : null);
-      save.memories = arr(s.memories).filter(v => ['spark', 'wind', 'home'].includes(v));
-      save.ach = s.ach && typeof s.ach === 'object' ? { ...s.ach } : {};
-      delete save.ach.rift;
-      delete save.ach.lore;
-      save.visited = arr(s.visited); save.detours = arr(s.detours); save.album = arr(s.album).filter(v => typeof v === 'string');
+      save.visited = arr(s.visited); save.detours = arr(s.detours);
       if (s.ver === ver || s.ver === legacyVer || compatible) {
         save.cp = Number.isInteger(s.cp) && s.cp >= 0 && s.cp < nIslands ? s.cp : 0;
         save.got = arr(s.got).filter(i => Number.isInteger(i) && i >= 0 && i < (s.ver === legacyVer ? nPickups - 1 : nPickups))
           .map(i => s.ver === legacyVer && i >= addedPickupIndex ? i + 1 : i);
         save.runT = Number.isFinite(s.runT) && s.runT > 0 ? s.runT : 0;
         save.falls = Number.isInteger(s.falls) ? s.falls : 0;
-        save.done = s.done === true; save.dirty = s.dirty === true; save.ruins = s.ruins === true;
+        save.done = s.done === true; save.dirty = s.dirty === true;
         save.echoes = arr(s.echoes).filter(Number.isInteger);
         save.rec = arr(s.rec).filter(f => Array.isArray(f) && f.length === 4 && f.every(Number.isFinite));
       }
@@ -80,12 +59,4 @@ export function mark(list, v) {
   save[list].push(v); persist();
   return true;
 }
-export function unlock(id) {
-  if (save.ach[id]) return;
-  save.ach[id] = Date.now(); persist();
-  const a = ACH.find(x => x[0] === id);
-  toast(a[1], a[2]);
-  tone([523.25, 659.25, 783.99, 1046.5], { dur: 1.6, vol: 0.045, gap: 0.08 });
-}
-export const achCount = () => ACH.filter(a => save.ach[a[0]]).length;
 export const fmtTime = t => { const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`; };

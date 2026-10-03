@@ -1,12 +1,12 @@
 // Deterministic shot-aware MP4 export. The edit, captions and score share one plan.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync, unlinkSync, readFileSync } from 'node:fs';
 import { dirname, resolve, parse } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ffmpegPath from 'ffmpeg-static';
 import puppeteer from 'puppeteer-core';
 import { createServer } from 'vite';
-import { foleyCues } from './trailer-audio.mjs';
+import { foleyCues, synthSfx } from './trailer-audio.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = {};
@@ -16,7 +16,7 @@ for (let i = 2; i < process.argv.length; i++) {
   args[a.slice(2)] = process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[++i] : true;
 }
 const opt = {
-  clip: args.clip ?? 'journey', out: resolve(root, args.out ?? 'trailer/acima-da-nevoa-trailer-v3.mp4'),
+  clip: args.clip ?? 'journey', out: resolve(root, args.out ?? 'trailer/acima-da-nevoa-trailer-v4.mp4'),
   width: +(args.width ?? 1920), height: +(args.height ?? 1080), fps: +(args.fps ?? 60), crf: +(args.crf ?? 18),
   from: +(args.from ?? 0), to: args.to === undefined ? null : +args.to,
   review: !!args.review, music: args['no-music'] ? false : args.music,
@@ -33,7 +33,7 @@ const executablePath = paths.find(p => p && existsSync(p));
 if (!executablePath) throw new Error('Set CHROME_PATH to Chrome or Edge');
 mkdirSync(dirname(opt.out), { recursive: true });
 const stem = resolve(dirname(opt.out), parse(opt.out).name);
-const reviewDir = resolve(dirname(opt.out), 'review-v3');
+const reviewDir = resolve(dirname(opt.out), 'review-v4');
 const picture = `${stem}-picture.mp4`;
 if (opt.review) mkdirSync(reviewDir, { recursive: true });
 
@@ -50,6 +50,7 @@ async function score(plan) {
     ? [{ file: opt.music, at: 0, to: plan.dur, offset: 0, gain: 0.8, fadeIn: 2, fadeOut: 3 }]
     : plan.audio;
   if (!cues.length) return null;
+  synthSfx(root, ffmpegPath);
   const inputs = [], filters = [];
   cues.forEach((c, i) => {
     const path = resolve(root, c.file), len = c.to - c.at;
@@ -59,11 +60,18 @@ async function score(plan) {
     const fi = Math.min(c.fadeIn ?? 0.5, len / 2), fo = Math.min(c.fadeOut ?? 1, len / 2);
     filters.push(`[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=PTS-STARTPTS,volume=${c.gain ?? 1},afade=t=in:st=0:d=${fi},afade=t=out:st=${len - fo}:d=${fo},adelay=${Math.round(c.at * 1000)}|${Math.round(c.at * 1000)}[a${i}]`);
   });
-  filters.push(`${cues.map((_, i) => `[a${i}]`).join('')}amix=inputs=${cues.length}:duration=longest:normalize=0,apad,atrim=duration=${plan.dur},loudnorm=I=-18:TP=-1.5:LRA=11,aresample=48000,afade=t=out:st=${plan.dur - 1.5}:d=1.5[mix]`);
-  const path = `${stem}-score.wav`, graph = `${stem}-audio.ffgraph`;
+  filters.push(`${cues.map((_, i) => `[a${i}]`).join('')}amix=inputs=${cues.length}:duration=longest:normalize=0,apad,atrim=duration=${plan.dur}[mix]`);
+  const path = `${stem}-score.wav`, raw = `${stem}-raw.wav`, graph = `${stem}-audio.ffgraph`;
   writeFileSync(graph, filters.join(';'));
-  try { await runFF([...inputs, '-filter_complex_threads', '1', '-filter_complex_script', graph, '-map', '[mix]', '-c:a', 'pcm_s16le', path]).done; }
+  try { await runFF([...inputs, '-filter_complex_threads', '1', '-filter_complex_script', graph, '-map', '[mix]', '-c:a', 'pcm_f32le', raw]).done; }
   finally { unlinkSync(graph); }
+  // One static gain to -16 LUFS plus a peak limiter: unlike a single-pass loudnorm this keeps the mix's dynamics,
+  // so the climax stays louder than the lull before it.
+  const meter = spawnSync(ffmpegPath, ['-hide_banner', '-nostats', '-i', raw, '-af', 'ebur128', '-f', 'null', '-'], { encoding: 'utf8' });
+  const I = +(/I:\s+(-?[\d.]+) LUFS/.exec(meter.stderr.split('Summary:').pop()) ?? [])[1];
+  if (!Number.isFinite(I)) throw new Error('Could not measure the score loudness');
+  try { await runFF(['-i', raw, '-af', `volume=${(-16 - I).toFixed(2)}dB,alimiter=limit=0.84:level=0:attack=3:release=80,afade=t=out:st=${plan.dur - 1.5}:d=1.5`, '-c:a', 'pcm_s16le', path]).done; }
+  finally { unlinkSync(raw); }
   return path;
 }
 if (args['score-only']) {

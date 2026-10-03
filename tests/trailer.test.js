@@ -26,7 +26,7 @@ test('every trailer caption is visible within its shot, and all cuts align to bo
     for (const c of s.captions ?? []) assert.ok(c.at >= 0 && c.at < c.to && c.to <= s.dur, `${s.name}: caption exceeds shot`);
     at += s.dur;
   }
-  assert.ok(at > 85 && at < 110);
+  assert.ok(at > 60 && at < 110);
   assert.equal(at, clip.dur);
   const tease = clip.shots.filter(s => s.teaser);
   assert.ok(tease.length > 0 && tease.reduce((n, s) => n + s.dur, 0) <= 1.8, 'the ending can only appear in brief glimpses');

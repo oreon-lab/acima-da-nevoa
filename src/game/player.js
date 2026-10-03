@@ -11,9 +11,9 @@ import { puff, burst, sparks, SPARK_W } from '../fx/particles.js';
 import { grade } from '../render/post.js';
 import { tone, playSample, stepSound, landSound, glideSound, swordWhoosh, dashSound } from './audio.js';
 import { setCount, flashCount, areaTitle, toast } from './ui.js';
-import { canCollect, MEMORIES } from './journeyRules.js';
+import { canCollect } from './journeyRules.js';
 import { held, move, rumble } from './input.js';
-import { save, persist, mark, unlock } from './progress.js';
+import { save, persist, mark } from './progress.js';
 import { cam, resetCameraMotion, dashFx } from './camera.js';
 
 export const player = {
@@ -289,12 +289,6 @@ function onLand(impact) {
   if (impact > 12) rumble(Math.min(impact / 30, 0.7), 100);
   if (impact > 12) tone([95], { dur: 0.16, vol: Math.min(0.03 + impact * 0.008, 0.14), slide: 0.55, at: player.pos });
 }
-// counted achievements; call after anything they count changes
-export function checkAch() {
-  if (player.collected >= pickups.length) unlock('shards');
-  if (save.visited.length >= islands.length + secrets.length) unlock('islands');
-  if (save.detours.length >= counts.detours) unlock('detours');
-}
 function activateCheckpoint(i) {
   player.cp = save.cp = i;
   areaTitle(i, 'checkpoint');
@@ -308,16 +302,11 @@ function activateCheckpoint(i) {
   }
   persist();
 }
-function visit(key) { if (mark('visited', key)) { checkAch(); return true; } return false; }
+function visit(key) { if (mark('visited', key)) return true; return false; }
 function collect(k) {
   k.got = true;
   save.got.push(pickups.indexOf(k)); persist();
   setCount(++player.collected, pickups.length, true); flashCount();
-  checkAch();
-  for (const memory of MEMORIES) if (player.collected === memory.at) {
-    mark('memories', memory.id);
-    toast(memory.title, memory.effect, 'MEMÓRIA');
-  }
   const p = k.g.position;
   burst(p.x, p.y, p.z, 22, 2.6);
   burst(p.x, p.y, p.z, 8, 1.2, SPARK_W);
@@ -421,7 +410,6 @@ export function updatePlayer(dt) {
   if (player.gliding && (player.grounded || !held('jump') || !canMove)) player.gliding = false;
   if (player.gliding) {
     v.y = v.y > -GLIDE_SINK ? Math.max(v.y - GRAV * 0.5 * dev.gravity * dt, -GLIDE_SINK) : damp(v.y, -GLIDE_SINK, 5, dt);   // soft catch, then a steady sink
-    if (Math.hypot(p.x - player.glideFrom.x, p.z - player.glideFrom.z) >= 25) unlock('glide');
   } else v.y = Math.max(v.y - (v.y > 0 ? GRAV : GRAV * 1.4) * dev.gravity * dt, -34);
   for (const u of updrafts) {   // wind vents lift you (and lift-off works even while standing on the vent stone); gliding rides them higher
     const ux = p.x - u.x, uz = p.z - u.z;
@@ -511,8 +499,7 @@ export function updatePlayer(dt) {
       visit('i' + g.island);
     }
     if (g.secret !== undefined) visit('s' + g.secret);
-    if (g.whaleDeck) unlock('whale');
-    if (g.detour !== undefined && mark('detours', g.detour)) checkAch();
+    if (g.detour !== undefined) mark('detours', g.detour);
     if (g.goal && !summit.reached) finale();
   }
   probe.set(p.x, p.y + 0.55, p.z);

@@ -44,7 +44,7 @@ const chase = (s, back, up, ahead = 2, side = 0) => {
   const f = P(Math.sin(s.yaw), 0, Math.cos(s.yaw)), r = P(f.z, 0, -f.x);
   return { pos: P(s.pos.x - f.x * back + r.x * side, s.pos.y + up, s.pos.z - f.z * back + r.z * side), look: P(s.pos.x + f.x * ahead, s.pos.y + 0.8, s.pos.z + f.z * ahead) };
 };
-const GRADE = 'contrast(1.07) saturate(1.12) brightness(1.02)';
+const GRADE = 'contrast(1.16) saturate(1.14) brightness(0.97)';
 
 // ============================================================ Act I: the walker above the mist, and the first stones
 const STONES0 = [[0, 0, -8.8], [0.6, 0.9, -11.7], [2.1, 1.7, -15.3], [3.7, 2.7, -18.7], [5.9, 3.7, -22.2], [7.9, 4.9, -25.6], [8.6, 6, -29.4], [9.6, 7, -33.1], [12.2, 7.6, -38.5]];
@@ -56,7 +56,7 @@ crossing0.add(run([13.5, 7.6, -41], 5.4));
 
 const rise = {
   name: 'rise', dur: 7.2,
-  begin() { sky(0.45, 1, 0); guards(); },
+  begin() { sky(0.45, 0, 0); guards(); },
   frame(u, dt) {
     body(hero, 0, dt);
     const pos = track([[0, [-9, -11, -17]], [2.0, [-10.5, -1.2, -15]], [3.8, [-9.2, 1.1, -11.5]], [7.2, [-4.6, 1.25, -3.6]]]);
@@ -77,17 +77,18 @@ const hop2 = {
   name: 'hop-chase', dur: 2.2,
   begin() { sky(0.455, 0, 0.15); guards(); },
   frame(u, dt) {
-    const s = body(crossing0, u + 2.0, dt), c = chase(s, 4.2, 2.1, 5, 1.2);
-    setCamera(c.pos, c.look, 46);
+    const s = body(crossing0, u + hop1.dur, dt), c = chase(s, 4.6, 1.6, 1.8, 1.2);
+    setCamera(c.pos, c.look, 48);
   },
+  captions: [caption(0.2, 2.1, 'Um salto de cada vez.')],
 };
 const hop3 = {
   name: 'hop-wide', dur: 2.6,
   begin() { sky(0.46, 0, 0.15); guards(); },
   frame(u, dt) {
-    const s = body(crossing0, u + 4.2, dt);
+    const s = body(crossing0, u + hop1.dur + hop2.dur, dt);
     const az = lerp(0.2, 1.1, ease(u / 2.6));
-    setCamera(P(s.pos.x + Math.sin(az) * 12, s.pos.y + 1.5, s.pos.z + Math.cos(az) * 12), P(s.pos.x, s.pos.y + 1.2, s.pos.z), 38);
+    setCamera(P(s.pos.x + Math.sin(az) * 8, s.pos.y + 1.3, s.pos.z + Math.cos(az) * 8), P(s.pos.x, s.pos.y + 0.9, s.pos.z), 40);
   },
 };
 
@@ -108,7 +109,7 @@ const crumbleB = {
   name: 'crumble-side', dur: 2.4,
   begin() { sky(0.46, 0, 0.2); guards(); },
   frame(u, dt) {
-    const s = body(crumble, u + 2.6, dt);
+    const s = body(crumble, u + 0.2 + crumbleA.dur, dt);
     setCamera(P(s.pos.x + 2.5, s.pos.y + 6.5, s.pos.z + 11), P(s.pos.x + 0.8, s.pos.y + 0.7, s.pos.z), 42);
   },
 };
@@ -116,11 +117,11 @@ const crumbleB = {
 const RUINS = [[96.0, 16.9, -76.0], [101.3, 16.9, -73.6], [103.8, 17.4, -71.4], [107.4, 18, -68.6]];
 const ruins = new Puppet([86.8, 16.5, -80.0], 1.2).add(run(RUINS[0], 5.4), run(RUINS[1], 5.4), jump(RUINS[2], 0.45, 0.9), jump(RUINS[3], 0.45, 0.9));
 const ruinsShot = {
-  name: 'ruins', dur: 3.4,
+  name: 'ruins', dur: 3.0,
   begin() { sky(0.462, 0, 0.3); guards(); },
   frame(u, dt) {
-    const s = body(ruins, u + 0.3, dt), c = chase(s, 5.5, 1.5, 3, -2.2);
-    setCamera(c.pos, c.look, lerp(46, 40, ease(u / 3.4)));
+    const s = body(ruins, u + 0.3, dt), c = chase(s, 5.2, 1.4, 1.2, -2.0);
+    setCamera(c.pos, c.look, lerp(46, 40, ease(u / 3.0)));
   },
 };
 
@@ -133,8 +134,8 @@ const glideShot = {
   begin() { sky(0.465, 0, 0.3); guards(); },
   frame(u, dt) {
     const s = body(flight, u, dt);
-    const az = lerp(2.9, 4.4, ease(u / 5.6)), d = lerp(9, 13, u / 5.6);
-    setCamera(P(s.pos.x + Math.sin(az) * d, s.pos.y - lerp(3.5, 0.5, u / 5.6), s.pos.z + Math.cos(az) * d), P(s.pos.x, s.pos.y + 0.3, s.pos.z), 44);
+    const az = lerp(2.9, 4.0, ease(u / 5.6)), d = lerp(4.5, 6.5, u / 5.6);
+    setCamera(P(s.pos.x + Math.sin(az) * d, s.pos.y - lerp(1.6, 0.2, u / 5.6), s.pos.z + Math.cos(az) * d), P(s.pos.x, s.pos.y + 0.3, s.pos.z), 52);
   },
 };
 
@@ -153,12 +154,14 @@ function fightStep(F, dt) {
   // strike when the guard winds up (it glows red: the blow interrupts it); once stunned, finish it at once
   const ready = g.windup > 0.2 || (g.stun > 0 && dist < 1.95) || (fight.armedAt !== null && F - fight.armedAt > 3 && dist < 1.95);
   if (combat.armed && !combat.weaponTransition && !combat.attack && g.hp > 0 && ready && F - fight.last > 0.25 && requestAttack()) { fight.last = F; mark(F, `attack d=${dist.toFixed(2)} wind=${g.windup.toFixed(2)} hp=${g.hp}`); }
-  if (g.hp <= 0 && fight.deadAt === null) { fight.deadAt = F; mark(F, 'dead'); }
+  if (g.hp <= 0 && fight.deadAt === null) { fight.deadAt = F; mark(F, 'dead'); trailerSound.emit('kill'); }
   if (fight.deadAt !== null && !fight.sheathed && F > fight.deadAt + 0.9 && combat.armed && !combat.weaponTransition && !combat.attack) { fight.sheathed = true; toggleWeapons(); mark(F, 'sheathe'); }
   window.__fightLog = fight.log;
 }
 const flat = (a, b) => { const d = P(b.x - a.x, 0, b.z - a.z); return d.lengthSq() > 1e-6 ? d.normalize() : P(0, 0, 1); };
 const duelBegin = () => { sky(0.462, 0, 0.35); guards(2); dev.safe = true; };
+// the killing blow lands as a white frame that falls away in a quarter second; `F0` is when the shot starts in fight time
+const killFlash = F0 => o => { const x = fight.deadAt === null ? -1 : F0 + o - fight.deadAt; return { white: x >= 0 && x < 0.25 ? 0.6 * (1 - x / 0.25) : 0 }; };
 const fightA = {
   name: 'fight-wide', dur: 2.2,
   begin() {
@@ -170,8 +173,9 @@ const fightA = {
     fightStep(u, dt);
     const g = guard().root.position, n = player.pos, d = flat(n, g), perp = P(-d.z, 0, d.x), m = P((g.x + n.x) / 2, n.y, (g.z + n.z) / 2);
     const k = u / 2.2;
-    setCamera(P(m.x + perp.x * lerp(8.5, 7, k), m.y + 0.9, m.z + perp.z * lerp(8.5, 7, k)), P(m.x, m.y + 0.9, m.z), 40);
+    setCamera(P(m.x + perp.x * lerp(7.5, 6, k), m.y + 2.2, m.z + perp.z * lerp(7.5, 6, k)), P(m.x, m.y + 0.6, m.z), 40);
   },
+  fx: killFlash(0),
 };
 const fightB = {
   name: 'fight-shoulder', dur: 1.4,
@@ -180,8 +184,9 @@ const fightB = {
     const F = 2.2 + u;
     fightStep(F, dt);
     const g = guard().root.position, n = player.pos, d = flat(n, g), perp = P(-d.z, 0, d.x), back = lerp(3.5, 2.7, u / 1.4);
-    setCamera(P(n.x - d.x * back + perp.x * 1.6, n.y + 1.3, n.z - d.z * back + perp.z * 1.6), P((g.x + n.x) / 2, n.y + 0.55, (g.z + n.z) / 2), 38);
+    setCamera(P(n.x - d.x * back + perp.x * 2.6, n.y + 1.6, n.z - d.z * back + perp.z * 2.6), P(g.x * 0.65 + n.x * 0.35, n.y + 0.5, g.z * 0.65 + n.z * 0.35), 40);
   },
+  fx: killFlash(2.2),
 };
 const fightC = {
   name: 'fight-orbit', dur: 1.6,
@@ -192,8 +197,9 @@ const fightC = {
     const g = guard().root.position, n = player.pos, m = P(n.x, n.y + 0.65, n.z), k = ease(u / 1.6);
     // Stay on the same side of the action axis as the wide and shoulder shots.
     const az = Math.atan2(g.x - n.x, g.z - n.z) - lerp(1.3, 1.0, k);
-    setCamera(P(m.x + Math.sin(az) * 3.8, m.y + lerp(0.1, 0.8, k), m.z + Math.cos(az) * 3.8), m, 40);
+    setCamera(P(m.x + Math.sin(az) * 3.8, m.y + lerp(0.5, 1.0, k), m.z + Math.cos(az) * 3.8), m, 40);
   },
+  fx: killFlash(3.6),
 };
 
 // ============================================================ the whale of mist: the ninja jumps aboard at the pier, and it swims out over the sea of clouds
@@ -226,13 +232,13 @@ const whaleBoard = {
   },
 };
 const whaleRide = {
-  name: 'whale-ride', dur: 6,
+  name: 'whale-ride', dur: 3,
   clock: o => WHALE0 + whaleBoard.dur + o,
   begin() { sky(0.468, 0, 0.35); guards(); },
   frame(u, dt) {
     onDeck(dt);
-    const w = whale.pose, k = u / 6, f = P(Math.cos(w.yaw), 0, Math.sin(w.yaw)), r = P(-f.z, 0, f.x);
-    const side = lerp(27, 30, ease(k)), fwd = lerp(8, 14, ease(k)), up = lerp(-4.5, -1.5, ease(k));
+    const w = whale.pose, k = u / 3, f = P(Math.cos(w.yaw), 0, Math.sin(w.yaw)), r = P(-f.z, 0, f.x);
+    const side = lerp(30, 22, ease(k)), fwd = lerp(16, 6, ease(k)), up = lerp(-5, 0.5, ease(k));
     setCamera(P(w.x - r.x * side + f.x * fwd, w.y + up, w.z - r.z * side + f.z * fwd), P(w.x, w.y - 2.0, w.z), lerp(44, 40, k));
   },
 };
@@ -242,7 +248,7 @@ let ending = null;
 function vista(name, index, dur, tod, start, end, text) {
   return {
     name, dur, actor: false, island: index,
-    begin() { sky(tod, 1, 0.2); guards(); },
+    begin() { sky(tod, 0, 0.2); guards(); },
     frame(u, dt) {
       const is = islands[index], k = ease(u / dur), target = P(is.x, is.y + 2, is.z);
       plant(P(is.cp.x, is.y, is.cp.z), dt); game.trailerFocus = target;
@@ -251,15 +257,15 @@ function vista(name, index, dur, tod, start, end, text) {
     captions: text ? [caption(0.5, dur - 0.2, text)] : [],
   };
 }
-const opening = vista('the-light', 0, 4, 0.455, [-26, 7, 24], [-19, 5, 19], 'Há uma luz acima da névoa.');
-opening.fx = o => ({ black: 1 - ease(seg(o, 0, 1.2)) });
-const heroReveal = { ...rise, dur: 4.8, island: 0, frame(u, dt) { rise.frame(u + 2.4, dt); } };
-const dew = vista('first-discovery', 1, 3, 0.455, [-15, 5, 12], [-12, 4, 10], 'Um salto de cada vez.');
-const ruinsWide = vista('ruins-establish', 3, 2.2, 0.462, [-17, 6, 14], [-14, 5, 12]);
-const camp = vista('pause-before-the-voyage', 5, 3.2, 0.465, [14, 5, 16], [11, 4, 13]);
+const opening = vista('the-light', 0, 3.6, 0.455, [-28, 8, 26], [-17, 4.5, 17], 'Há uma luz acima da névoa.');
+opening.fx = o => ({ black: 1 - ease(seg(o, 0, 0.6)) });
+const heroReveal = { ...rise, dur: 4.0, island: 0, frame(u, dt) { rise.frame(u + 3.2, dt); } };
+const dew = vista('first-discovery', 1, 2.2, 0.455, [-15, 5, 12], [-11, 3.5, 9]);
+const ruinsWide = vista('ruins-establish', 3, 1.8, 0.462, [-17, 6, 14], [-14, 5, 12]);
+const camp = vista('pause-before-the-voyage', 5, 2.4, 0.465, [14, 5, 16], [11, 4, 13]);
 const flightLaunch = {
   name: 'wind-launch', dur: 1.8, island: 3, speed: () => 0.35,
-  begin() { sky(0.462, 1, 0.3); guards(); },
+  begin() { sky(0.462, 0, 0.3); guards(); },
   frame(u, dt) {
     const s = body(flight, u, dt);
     setCamera(P(s.pos.x - 5, s.pos.y + 1.7, s.pos.z + 6), P(s.pos.x, s.pos.y + 0.7, s.pos.z), 36);
@@ -273,24 +279,25 @@ const flightWide = {
 };
 const flightLanding = {
   name: 'wind-landing', dur: 1.6, island: 4,
-  begin() { sky(0.462, 1, 0.3); guards(); },
+  begin() { sky(0.462, 0, 0.3); guards(); },
   frame(u, dt) {
     const s = body(flight, launchTime + flightWide.dur + u, dt), c = chase(s, 5.5, 2.6, 2, 1.8);
     setCamera(c.pos, c.look, 41);
   },
 };
 const opponent = {
-  name: 'guard-reveal', dur: 2, island: 4,
-  begin() { duelBegin(); resetCombat(); guards(2); },
+  name: 'guard-reveal', dur: 1.8, island: 4,
+  begin() { duelBegin(); resetCombat(); guards(2); this.face = guard().root.rotation.y; },
   frame(u, dt) {
     plant(FA, dt);
-    const g = guard().root.position, d = flat(player.pos, g), r = P(-d.z, 0, d.x);
-    setCamera(P(FA.x - d.x * 4 + r.x * 1.6, FA.y + 1.3, FA.z - d.z * 4 + r.z * 1.6), P(g.x, g.y + 0.7, g.z), 37);
+    // a slow push in on the guard's face, from in front of it (its heading when the shot starts, so a turn cannot whip the camera)
+    const g = guard().root.position, f = P(Math.sin(this.face), 0, Math.cos(this.face)), r = P(f.z, 0, -f.x), k = ease(u / 1.8), d = lerp(4.2, 3.2, k);
+    setCamera(P(g.x + f.x * d + r.x * 1.2, g.y + 1.0, g.z + f.z * d + r.z * 1.2), P(g.x, g.y + 0.65, g.z), 36);
   },
 };
 const whaleReveal = {
   name: 'whale-reveal', dur: 3.6, actor: false, island: 5, clock: () => WHALE0,
-  begin() { sky(0.465, 1, 0.3); guards(); },
+  begin() { sky(0.465, 0, 0.3); guards(); },
   frame(u, dt) {
     const w = whale.pose, k = ease(u / 3.6), f = P(Math.cos(w.yaw), 0, Math.sin(w.yaw)), r = P(-f.z, 0, f.x);
     plant(P(whale.source.x, whale.source.y, whale.source.z), dt);
@@ -300,12 +307,12 @@ const whaleReveal = {
   captions: [caption(0.5, 3.4, 'Você não viaja sozinho.')],
 };
 const whaleClose = {
-  name: 'whale-front-deck', dur: 3.6, island: 5,
+  name: 'whale-front-deck', dur: 2.8, island: 5,
   clock: o => WHALE0 + whaleBoard.dur + whaleRide.dur + o,
-  begin() { sky(0.468, 1, 0.35); guards(); },
+  begin() { sky(0.468, 0, 0.35); guards(); },
   frame(u, dt) {
     onDeck(dt, 5.6);
-    const w = whale.pose, k = ease(u / 3.6);
+    const w = whale.pose, k = ease(u / 2.8);
     const cam = carrierPoint(w, lerp(10.4, 9.5, k), 2.0, -3.0);
     // Both trees are behind the subject; this view never looks through either trunk or crown.
     setCamera(P(cam.x, cam.y, cam.z), P(player.pos.x, player.pos.y + 0.65, player.pos.z), 41);
@@ -313,9 +320,9 @@ const whaleClose = {
   },
 };
 const whaleHorizon = {
-  name: 'whale-departure', dur: 2.6, island: 5,
+  name: 'whale-departure', dur: 2.2, island: 5,
   clock: o => WHALE0 + whaleBoard.dur + whaleRide.dur + whaleClose.dur + o,
-  begin() { sky(0.47, 1, 0.35); guards(); },
+  begin() { sky(0.47, 0, 0.35); guards(); },
   frame(u, dt) {
     onDeck(dt, 5.6);
     const w = whale.pose, cam = carrierPoint(w, 16, 6, -22);
@@ -324,46 +331,45 @@ const whaleHorizon = {
 };
 let forestPath, bridgePath;
 const forestWalk = {
-  name: 'forest-ascent', dur: 4.4, island: 6,
+  name: 'forest-ascent', dur: 2.6, island: 6,
   begin() {
-    sky(0.47, 1, 0.35); guards(); const is = islands[6];
+    sky(0.47, 0, 0.35); guards(); const is = islands[6];
     const p = P(is.cp.x, is.y, is.cp.z);
-    forestPath = new Puppet(p, -0.85).add(stand(p, -0.85, 4.4));
+    forestPath = new Puppet(p, -0.85).add(stand(p, -0.85, 2.6));
   },
   frame(u, dt) {
-    const is = islands[6], s = body(forestPath, u, dt), k = ease(u / 4.4);
-    setCamera(P(s.pos.x + lerp(2.8, 2.3, k), s.pos.y + 1.3, s.pos.z - lerp(3.8, 3.2, k)), P(s.pos.x, s.pos.y + 0.8, s.pos.z), 45);
+    const s = body(forestPath, u, dt), k = ease(u / 2.6);
+    setCamera(P(s.pos.x + lerp(3.4, 2.2, k), s.pos.y + lerp(1.0, 1.5, k), s.pos.z - lerp(4.6, 3.0, k)), P(s.pos.x, s.pos.y + 0.8, s.pos.z), 45);
   },
-  captions: [caption(0.6, 4.2, 'Mas o que espera lá em cima?')],
 };
 const bridgeCrossing = {
-  name: 'bridge-to-the-crown', dur: 4.4, island: 8,
+  name: 'bridge-to-the-crown', dur: 3, island: 8, floor: 'wood',
   begin() {
-    sky(0.475, 1, 0.4); guards(); updateBridges(8, 5);
+    sky(0.475, 0, 0.4); guards(); updateBridges(8, 5);
     const [a, b] = [crossings[8].steps[1], crossings[8].steps[2]], d = flat(P(a.x, a.y, a.z), P(b.x, b.y, b.z));
     bridgePath = new Puppet([a.x + d.x * 0.8, a.y + 0.06, a.z + d.z * 0.8]).add(run([b.x - d.x * 1, b.y + 0.06, b.z - d.z * 1], 3.8));
   },
   frame(u, dt) {
-    const s = body(bridgePath, u, dt), c = chase(s, 6, 3, 3, 3.5);
+    const s = body(bridgePath, u, dt), c = chase(s, 5.5, 2.4, 1.2, 3.2);
     setCamera(c.pos, c.look, 43);
   },
 };
-const crown = vista('crown-before-the-summit', 9, 4.6, 0.48, [24, 9, 25], [17, 7, 22]);
 let finalWalk;
 const farolApproach = {
-  name: 'farol-approach', dur: 4.4, island: 10,
+  name: 'farol-approach', dur: 3, island: 10,
   begin() {
-    sky(0.48, 1, 0.5); guards();
+    sky(0.48, 0, 0.5); guards();
     const is = islands[10]; finalWalk = new Puppet([is.cp.x, is.y, is.cp.z]).add(run([41.2, is.y, -101.6], 2.4));
   },
   frame(u, dt) {
-    const s = body(finalWalk, u, dt), k = ease(u / 4.4);
-    setCamera(P(lerp(30, 32, k), s.pos.y + 3.0, lerp(-87, -90, k)), P(summit.pos.x, summit.pos.y + 0.4, summit.pos.z), lerp(54, 50, k));
+    const s = body(finalWalk, u, dt), k = ease(u / 3);
+    setCamera(P(lerp(30, 32, k), s.pos.y + lerp(2.4, 3.2, k), lerp(-87, -90, k)), P(summit.pos.x, summit.pos.y + 0.4, summit.pos.z), lerp(52, 42, k));
   },
+  captions: [caption(0.3, 2.9, 'Mas o que espera lá em cima?')],
 };
 const shell = {
   name: 'farol-shell', dur: 1.2, island: 10, actor: false,
-  begin() { sky(0.48, 1, 0.5); guards(); },
+  begin() { sky(0.48, 0, 0.5); guards(); },
   frame(u, dt) {
     body(finalWalk, 20, dt); game.trailerFocus = summit.pos.clone();
     setCamera(P(summit.pos.x - 5.8, summit.pos.y + 2.1, summit.pos.z + 6), P(summit.pos.x, summit.pos.y + 2.4, summit.pos.z), 40);
@@ -379,7 +385,7 @@ const rift = {
   begin() { ending.seekCutscene(18.9); },
 };
 const silence = {
-  name: 'unanswered-cut', dur: 0.8, card: '<div></div>', actor: false,
+  name: 'unanswered-cut', dur: 1, card: '<div></div>', actor: false,
   begin() { ending.cutscene.on = false; game.timeScale = 1; },
 };
 const title = {
@@ -394,7 +400,7 @@ for (const s of [fightA, fightB, fightC]) s.island = 4;
 whaleBoard.island = whaleRide.island = 5;
 const shots = [opening, heroReveal, hop1, hop2, hop3, dew, crumbleA, crumbleB, ruinsWide, ruinsShot,
   flightLaunch, flightWide, flightLanding, opponent, fightA, fightB, fightC, camp,
-  whaleReveal, whaleBoard, whaleRide, whaleClose, whaleHorizon, forestWalk, bridgeCrossing, crown,
+  whaleReveal, whaleBoard, whaleRide, whaleClose, whaleHorizon, forestWalk, bridgeCrossing,
   farolApproach, shell, disturbance, stillness, rift, silence, title];
 const END = sequence(shots);
 const journey = {
@@ -402,16 +408,37 @@ const journey = {
   async init() { ending = await import('./cutscene.js'); },
   audio(plan) {
     const at = name => plan.find(s => s.name === name).at;
-    const action = at('crumble-front'), voyage = at('pause-before-the-voyage'), ascent = at('forest-ascent');
+    // Dynamics are the point: sound from frame one, a hard music cut into the action, a lull for the whale, one long
+    // build from the forest to the glimpses, silence on black, and a title that resolves softer than the climax.
+    const action = at('crumble-front'), voyage = at('pause-before-the-voyage'), whaleAt = at('whale-reveal'), ride = at('whale-ride');
+    const reveal = at('guard-reveal'), ascent = at('forest-ascent');
     const glitch = at('ending-interference-glimpse'), hole = at('ending-rift-glimpse'), logo = at('title');
+    const fx = (name, t, len, gain, mood) => ({ file:`trailer/audio/${name}`, at:t, to:Math.min(END, t + len), offset:0, gain, fadeIn:0.005, fadeOut:Math.min(0.5, len / 3), mood });
+    const rise = Math.max(ascent, glitch - 12);
     return [
-      { file:'trailer/audio/awakening.mp3', at:0, to:action + 1.2, offset:0, gain:0.95, fadeIn:1.8, fadeOut:2, mood:'curiosidade' },
-      { file:'trailer/audio/call-to-adventure.mp3', at:action - 1, to:voyage + 0.8, offset:12, gain:0.70, fadeIn:1.8, fadeOut:2, mood:'aventura e coragem' },
-      { file:'trailer/audio/horizons.mp3', at:voyage - 1.2, to:ascent + 1.2, offset:32, gain:0.82, fadeIn:2.2, fadeOut:2.4, mood:'encontro e admiração' },
-      { file:'trailer/audio/the-long-dark.mp3', at:ascent - 1.2, to:glitch + 0.1, offset:34, gain:0.95, fadeIn:2.4, fadeOut:0.3, mood:'pressentimento' },
-      { file:'trailer/audio/kenney-impact/Audio/impactMetal_heavy_000.ogg', at:glitch, to:glitch + 0.65, gain:0.28, fadeIn:0.005, fadeOut:0.15, mood:'interferência' },
-      { file:'trailer/audio/kenney-impact/Audio/impactBell_heavy_000.ogg', at:hole, to:hole + 0.8, gain:0.42, fadeIn:0.005, fadeOut:0.18, mood:'o vislumbre' },
-      { file:'trailer/audio/horizons.mp3', at:logo + 0.2, to:END, offset:112, gain:0.78, fadeIn:0.8, fadeOut:1.8, mood:'assinatura' },
+      { file:'trailer/audio/synth/wind.wav', at:0, to:action + 0.4, offset:0, gain:0.5, fadeIn:0.15, fadeOut:1.2, mood:'vento de abertura' },
+      fx('synth/boom.wav', 0, 4, 0.8, 'abertura'),
+      // Awakening from its swell, so the first act climbs into the action
+      { file:'trailer/audio/awakening.mp3', at:0.2, to:action, offset:26, gain:0.62, fadeIn:1.2, fadeOut:0.3, mood:'curiosidade' },
+      fx('synth/whoosh.wav', action - 0.9, 1.2, 1.2, 'puxada para a ação'),
+      fx('synth/boom.wav', action, 3, 0.55, 'entrada da aventura'),
+      { file:'trailer/audio/call-to-adventure.mp3', at:action, to:voyage + 1, offset:12, gain:1.05, fadeIn:0.03, fadeOut:1.6, mood:'aventura e coragem' },
+      fx('synth/boom.wav', reveal, 2.5, 0.45, 'o guardião'),
+      // Horizons lands its swell on the whale
+      { file:'trailer/audio/horizons.mp3', at:voyage - 0.4, to:ascent + 0.6, offset:112 - (whaleAt - voyage + 0.4), gain:0.6, fadeIn:1.4, fadeOut:1.2, mood:'encontro e admiração' },
+      fx('synth/whale.wav', whaleAt + 0.3, 5, 0.6, 'canto da baleia'),
+      fx('synth/whale.wav', ride + 0.6, 5, 0.35, 'canto da baleia, distante'),
+      { file:'trailer/audio/synth/wind.wav', at:ride, to:ascent, offset:6, gain:0.3, fadeIn:0.6, fadeOut:0.8, mood:'vento no convés' },
+      // the ascent: The Long Dark's build and a riser, both cut dead on the first glimpse
+      { file:'trailer/audio/the-long-dark.mp3', at:ascent - 0.3, to:glitch, offset:318, gain:1.15, fadeIn:0.6, fadeOut:0.04, mood:'pressentimento' },
+      { file:'trailer/audio/synth/riser.wav', at:rise, to:glitch, offset:12 - (glitch - rise), gain:0.9, fadeIn:0.2, fadeOut:0.02, mood:'tensão' },
+      fx('synth/boom.wav', glitch, 2.4, 1.1, 'interferência'),
+      fx('kenney-impact/Audio/impactMetal_heavy_000.ogg', glitch, 0.65, 0.4, 'interferência'),
+      fx('synth/hit.wav', hole, 1.2, 0.8, 'o vislumbre'),
+      fx('kenney-impact/Audio/impactBell_heavy_000.ogg', hole, 0.8, 0.5, 'o vislumbre'),
+      fx('synth/boom.wav', logo + 0.05, 4, 0.5, 'título'),
+      // the very end of Horizons is its own cadence: the title resolves instead of peaking
+      { file:'trailer/audio/horizons.mp3', at:logo + 0.2, to:END, offset:267, gain:0.42, fadeIn:0.4, fadeOut:1.8, mood:'assinatura' },
     ];
   },
 };

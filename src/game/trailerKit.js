@@ -137,6 +137,7 @@ export function drive(s, dt) {
   p.copy(s.pos); v.copy(s.vel); player.grounded = s.grounded; player.gliding = s.gliding;
   const air = s.jumping || s.gliding;
   if (air && !prevJump && !prevGlide) { puppet.jump(); if (started) trailerSound.emit('cloth'); }
+  if (s.gliding && !prevGlide) trailerSound.emit('wind');
   if (!air && (prevJump || prevGlide)) { puppet.land(clamp(-lastVy, 3, 9)); trailerSound.emit('land'); }
   prevJump = s.jumping; prevGlide = s.gliding; lastVy = s.vel.y;
   if (!started) { yawS = s.yaw; started = true; }

@@ -5,7 +5,7 @@ import { settings } from '../config.js';
 export const ACTIONS = [
   ['forward', 'Frente'], ['back', 'Trás'], ['left', 'Esquerda'], ['right', 'Direita'], ['jump', 'Pular / planar'], ['interact', 'Interagir'],
   ['attack', 'Ataque duplo'], ['equip', 'Sacar / guardar espadas'],
-  ['camLeft', 'Girar câmera (esq.)'], ['camRight', 'Girar câmera (dir.)'], ['view', 'Primeira pessoa'], ['dash', 'Investida (dash)'], ['photo', 'Modo foto'], ['pause', 'Pausa'],
+  ['camLeft', 'Girar câmera (esq.)'], ['camRight', 'Girar câmera (dir.)'], ['view', 'Primeira pessoa'], ['dash', 'Investida (dash)'], ['photo', 'Modo foto'], ['pause', 'Pausa'], ['tutorial', 'Ver tutorial'],
 ];
 const ARROW = { forward: 'ArrowUp', back: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
 

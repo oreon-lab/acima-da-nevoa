@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canCollect, lightStage, nextMemory, restorationTarget, journeyHint } from '../src/game/journeyRules.js';
+import { canCollect, lightStage, nextStage, restorationTarget, journeyHint } from '../src/game/journeyRules.js';
 import { COURSE } from '../src/procedural/course.js';
 
-test('a hidden or locked puzzle reward cannot be collected, including after loading', () => {
+test('a hidden or locked fragment cannot be collected, including after loading', () => {
   const k = { got: false, available: false, g: { visible: false } };
   assert.equal(canCollect(k), false);
   k.g.visible = true; assert.equal(canCollect(k), false);
@@ -12,8 +12,8 @@ test('a hidden or locked puzzle reward cannot be collected, including after load
 });
 test('restoration progresses at meaningful thresholds and never gates the ending', () => {
   assert.deepEqual([0, 4, 5, 11, 12, 23, 24, 37].map(lightStage), [0, 0, 1, 1, 2, 2, 3, 3]);
-  assert.equal(nextMemory(5).at, 12);
-  assert.equal(nextMemory(37), null);
+  assert.equal(nextStage(5), 12);
+  assert.equal(nextStage(37), null);
   assert.equal(restorationTarget(0, true), 1);
   assert.ok(Math.abs(restorationTarget(24, false) - 0.6) < 1e-10);
 });

@@ -7,9 +7,8 @@
 import * as THREE from 'three';
 import { TAU, rand, pick } from '../utils.js';
 import { bake } from './geometry.js';
-import { freeSpot, pushGeo, landmarks } from './world.js';
+import { freeSpot, pushGeo } from './world.js';
 import { addProp } from './objects/props.js';
-import { addRuinsPuzzle } from './objects/ruinsPuzzle.js';
 import { addGroundMist } from '../render/atmosphere.js';
 import { addPond } from './objects/pond.js';
 import { addReeds } from './objects/reeds.js';
@@ -73,9 +72,6 @@ export const THEMES = {
       const c = at(is, is.exit, 0.1), y = is.y;
       addPavement(c.x, y, c.z, 2.6, is.pal); claim(is, c, 2.8, false);
       addArch(c.x, y, c.z, is.pal, -(is.exit + Math.PI / 2), 'stone');   // opens along the path
-      const puzzle = at(is, is.entry + Math.PI / 2, 0.5);
-      addRuinsPuzzle(is, puzzle.x, puzzle.z); claim(is, puzzle, 3.4);
-      landmarks.push({ id: 'ruinas', name: 'Espelhos do Vento', x: puzzle.x, y: y + 1.7, z: puzzle.z });
       for (let k = 0; k < 2; k++) {
         const s = freeSpot(is, 0.75, 0.88, 1.0); if (!s) continue;
         addBanner(s.x, y, s.z, pick(['#a8443c', '#3f6f7a', '#c99a3a'])); claim(is, s, 0.6);
@@ -102,7 +98,6 @@ export const THEMES = {
       const mill = at(is, is.exit + Math.PI / 2, 0.65);
       addProp('windmill', mill.x, y, mill.z, is.exit);
       claim(is, mill, 2.2);
-      landmarks.push({ id: 'moinho', name: 'Moinho Suspenso', x: mill.x, y: y + 2.8, z: mill.z });
     },
   },
 
@@ -115,7 +110,7 @@ export const THEMES = {
       addPetals(is, Math.round(is.R * is.R * 3.2), is.pal.leaf);
       addFireflies(is, 36);
       const s = freeSpot(is, 0.3, 0.65, 1.6);
-      if (s) { addProp('tree_light', s.x, is.y, s.z); claim(is, s, 1.2); landmarks.push({ id: 'bosque', name: 'Árvore do Bosque Pálido', x: s.x, y: is.y + 1.8, z: s.z }); }
+      if (s) { addProp('tree_light', s.x, is.y, s.z); claim(is, s, 1.2); }
     },
   },
 
@@ -126,7 +121,6 @@ export const THEMES = {
     decorate(is) {
       const y = is.y;
       addProp('tree_floating', is.x, y + 5.5, is.z, 0, 1.15);
-      landmarks.push({ id: 'pedra', name: 'Árvore Suspensa', x: is.x, y: y + 8, z: is.z });
       for (let k = 0; k < 4; k++) {
         const s = freeSpot(is, 0.35, 0.8, 1.2); if (!s) continue;
         addCrystalCluster(s.x, y, s.z, rand(0.8, 1.3), is.pal); claim(is, s, 1.7);

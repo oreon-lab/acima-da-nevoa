@@ -2,8 +2,9 @@ import { game } from '../core.js';
 import { settings, NAMES, ROMAN } from '../config.js';
 import { crossings } from '../procedural/world.js';
 import { pad, keyName } from './input.js';
-import { journeyHint, nextMemory } from './journeyRules.js';
+import { journeyHint, nextStage } from './journeyRules.js';
 import { whale } from '../procedural/objects/whale.js';
+import { tutorialAt, tutorialLabel } from './tutorial.js';
 
 function whaleHint(player, jump) {
   if (!whale.pose) return null;
@@ -20,7 +21,8 @@ function whaleHint(player, jump) {
 }
 
 const goal = document.querySelector('#objective'), guide = document.querySelector('#guide');
-let previous = -1, age = 0, goalText = '', guideText = '';
+let previous = -1, age = 0, goalText = '', guideText = '', keyText = '';
+export let tutorial = null;   // the tutorial the guide is offering right now
 export function resetGuide() { previous = -1; age = 0; }
 
 // over: { title, next, light, hint?: { title, text }, near? } replaces the lighthouse goal (O Instante has its own);
@@ -28,12 +30,12 @@ export function resetGuide() { previous = -1; age = 0; }
 export function updateGuide(dt, player, save, over = null) {
   if (previous !== player.cp) { previous = player.cp; age = 0; }
   if (game.state === 'play') age += dt;
-  const cp = player.cp, memory = nextMemory(player.collected);
+  const cp = player.cp, next = nextStage(player.collected);
   const jump = pad.active ? 'A' : keyName(settings.binds.jump);
   let excursion = whaleHint(player, jump);
   const title = over?.title ?? (save.done ? 'O farol voltou a brilhar' : 'Alcance o farol e restaure sua luz');
   const destination = over?.next ?? (save.done ? 'Explore os caminhos que ficaram para trás' : cp < NAMES.length - 1 ? `Próxima ilha · ${NAMES[cp + 1]}` : 'Suba ao altar sob o cristal do farol');
-  const light = over?.light ?? (memory ? `Luz reunida · ${player.collected} / ${memory.at}` : 'Todas as centelhas do farol despertaram');
+  const light = over?.light ?? (next ? `Luz reunida · ${player.collected} / ${next}` : 'Todas as centelhas do farol despertaram');
   const text = `${title}|${destination}|${light}|${cp}`;
   if (text !== goalText) {
     goalText = text;
@@ -48,6 +50,15 @@ export function updateGuide(dt, player, save, over = null) {
   const own = over?.hint && !save.done && (age < 12 || over.near);
   const show = settings.tips && game.state === 'play' && (over ? own : (excursion || (!save.done && crossing && (age < 9 || nearStart || onRoute))));
   guide.classList.toggle('show', !!show);
+  // at a glide or a climbing wall the guide offers a short tutorial clip (B)
+  tutorial = show && !over && !excursion && (nearStart || onRoute) ? tutorialAt(crossing, player.pos) : null;
+  const kt = tutorial ? `${keyName(settings.binds.tutorial)}|${tutorial.kind}` : '';
+  if (kt !== keyText) {
+    keyText = kt;
+    const box = guide.querySelector('.g-keys');
+    box.innerHTML = tutorial ? '<span class="kc"></span><span class="kl"></span>' : '';
+    if (tutorial) { box.firstChild.textContent = keyName(settings.binds.tutorial); box.lastChild.textContent = `ver tutorial · ${tutorialLabel(tutorial.kind)}`; }
+  }
   if (show) {
     const forward = pad.active ? 'Analógico esquerdo' : `${keyName(settings.binds.forward)}${keyName(settings.binds.left)}${keyName(settings.binds.back)}${keyName(settings.binds.right)}`;
     const hint = over ? over.hint.text : excursion?.text ?? journeyHint(crossing.hint, jump, forward);
